@@ -1,10 +1,24 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+  type FormEvent,
+} from 'react'
 import type { Vocabulary } from '@/payload-types'
 import { Icon } from './icons'
 import { Stamp } from './page-parts'
 import { Button, IndexCard, Input, Table, Tabs, Tag, WordPopover } from './ui'
+import {
+  useVocabularyStore,
+  addVocabularyItem,
+  updateVocabularyItem,
+  deleteVocabularyItem,
+} from '@/lib/storage'
 
 function playSpeech(text: string, lang = 'ja-JP', rate = 1) {
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -89,6 +103,25 @@ export function WordOfDayCard() {
   }
 
   const handleAdd = () => {
+    addVocabularyItem({
+      word: '寄り道',
+      reading: 'よりみち',
+      romanization: 'yorimichi',
+      meaning: 'A detour; stopping somewhere on the way',
+      language: 'japanese',
+      status: 'learning',
+      level: 'N4',
+      tags: [{ label: 'daily life' }, { label: 'travel' }],
+      examples: [
+        {
+          sentence: '帰りに本屋へ寄り道した。',
+          reading: 'Kaeri ni honya e yorimichi shita.',
+          translation: 'On my way back, I made a detour to the bookstore.',
+        },
+      ],
+      etymology: '寄る (to stop by) + 道 (road).',
+      source: 'Word of the Day',
+    })
     setAdded(true)
   }
 
@@ -403,8 +436,224 @@ export function ReviewSession() {
   )
 }
 
+export function AddWordModal({
+  onClose,
+  onAdd,
+  defaultLanguage = 'japanese',
+}: {
+  onClose: () => void
+  onAdd: (data: Omit<Vocabulary, 'id' | 'createdAt' | 'updatedAt'>) => void
+  defaultLanguage?: string
+}) {
+  const [word, setWord] = useState('')
+  const [reading, setReading] = useState('')
+  const [romanization, setRomanization] = useState('')
+  const [meaning, setMeaning] = useState('')
+  const [language, setLanguage] = useState<
+    'japanese' | 'korean' | 'spanish' | 'english' | 'indonesian'
+  >(defaultLanguage === 'all' ? 'japanese' : (defaultLanguage as any))
+  const [status, setStatus] = useState<'new' | 'learning' | 'known'>('new')
+  const [level, setLevel] = useState('N4')
+  const [tagsStr, setTagsStr] = useState('')
+  const [exampleSentence, setExampleSentence] = useState('')
+  const [exampleTranslation, setExampleTranslation] = useState('')
+  const [source, setSource] = useState('')
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    if (!word.trim() || !reading.trim() || !meaning.trim()) return
+
+    const tags = tagsStr
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0)
+      .map((label) => ({ label }))
+
+    const examples = exampleSentence.trim()
+      ? [
+          {
+            id: `ex-${Date.now()}`,
+            sentence: exampleSentence.trim(),
+            translation: exampleTranslation.trim() || 'Translation',
+          },
+        ]
+      : []
+
+    onAdd({
+      word: word.trim(),
+      reading: reading.trim(),
+      romanization: romanization.trim() || null,
+      meaning: meaning.trim(),
+      language,
+      status,
+      level: level.trim() || null,
+      tags: tags.length > 0 ? tags : null,
+      examples: examples.length > 0 ? examples : null,
+      source: source.trim() || 'Personal notebook entry',
+    })
+    onClose()
+  }
+
+  return (
+    <div className="modal-scrim" onClick={onClose} role="presentation">
+      <div
+        aria-labelledby="add-word-title"
+        aria-modal="true"
+        className="add-word-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <p className="eyebrow">NEW ENTRY / NOTEBOOK</p>
+            <h2 id="add-word-title">File a new word</h2>
+          </div>
+          <button
+            aria-label="Close dialog"
+            className="drawer-close"
+            onClick={onClose}
+            style={{ fontSize: '12px' }}
+            type="button"
+          >
+            Close ×
+          </button>
+        </div>
+
+        <form className="modal-form" onSubmit={handleSubmit}>
+          <div className="modal-row">
+            <label>
+              <span>Word or Expression *</span>
+              <input
+                autoFocus
+                onChange={(e) => setWord(e.target.value)}
+                placeholder="e.g. 木陰, 설레다, Sobremesa"
+                required
+                value={word}
+              />
+            </label>
+            <label>
+              <span>Reading / Pronunciation *</span>
+              <input
+                onChange={(e) => setReading(e.target.value)}
+                placeholder="e.g. こかげ, so-bre-me-sa"
+                required
+                value={reading}
+              />
+            </label>
+          </div>
+
+          <div className="modal-row">
+            <label>
+              <span>Romanization</span>
+              <input
+                onChange={(e) => setRomanization(e.target.value)}
+                placeholder="e.g. kokage, sobremesa"
+                value={romanization}
+              />
+            </label>
+            <label>
+              <span>Language</span>
+              <select onChange={(e) => setLanguage(e.target.value as any)} value={language}>
+                <option value="japanese">Japanese</option>
+                <option value="korean">Korean</option>
+                <option value="spanish">Spanish</option>
+                <option value="english">English</option>
+                <option value="indonesian">Indonesian</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            <span>Meaning / Definition *</span>
+            <textarea
+              onChange={(e) => setMeaning(e.target.value)}
+              placeholder="What does it mean in context?"
+              required
+              rows={2}
+              value={meaning}
+            />
+          </label>
+
+          <div className="modal-row">
+            <label>
+              <span>Initial Status</span>
+              <select onChange={(e) => setStatus(e.target.value as any)} value={status}>
+                <option value="new">New</option>
+                <option value="learning">Learning</option>
+                <option value="known">Known</option>
+              </select>
+            </label>
+            <label>
+              <span>Level / Chapter</span>
+              <input
+                onChange={(e) => setLevel(e.target.value)}
+                placeholder="e.g. N4, Beginner, Ch. 2"
+                value={level}
+              />
+            </label>
+          </div>
+
+          <label>
+            <span>Tags (comma-separated)</span>
+            <input
+              onChange={(e) => setTagsStr(e.target.value)}
+              placeholder="e.g. nature, conversation, daily life"
+              value={tagsStr}
+            />
+          </label>
+
+          <div className="modal-row">
+            <label>
+              <span>Example Sentence</span>
+              <input
+                onChange={(e) => setExampleSentence(e.target.value)}
+                placeholder="Sentence in target language"
+                value={exampleSentence}
+              />
+            </label>
+            <label>
+              <span>Sentence Translation</span>
+              <input
+                onChange={(e) => setExampleTranslation(e.target.value)}
+                placeholder="English or Indonesian translation"
+                value={exampleTranslation}
+              />
+            </label>
+          </div>
+
+          <label>
+            <span>Source</span>
+            <input
+              onChange={(e) => setSource(e.target.value)}
+              placeholder="Where did you meet this word?"
+              value={source}
+            />
+          </label>
+
+          <div className="modal-actions">
+            <button className="outline-button" onClick={onClose} type="button">
+              Cancel
+            </button>
+            <button className="primary-button" type="submit">
+              File into notebook <Icon name="plus" />
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export function NotebookTable({ words: initialWords }: { words: Vocabulary[] }) {
-  const [wordsList, setWordsList] = useState<Vocabulary[]>(initialWords)
+  const { words: wordsList, addItem, updateItem, deleteItem } = useVocabularyStore(initialWords)
   const [query, setQuery] = useState('')
   const [selectedLanguage, setSelectedLanguage] = useState('all')
   const [selectedTag, setSelectedTag] = useState('all')
@@ -413,6 +662,7 @@ export function NotebookTable({ words: initialWords }: { words: Vocabulary[] }) 
   const [selected, setSelected] = useState<Vocabulary | null>(null)
   const [personalNotes, setPersonalNotes] = useState<Record<string, string>>({})
   const [notice, setNotice] = useState<string | null>(null)
+  const [isAddingWord, setIsAddingWord] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const tagsList = useMemo(() => {
@@ -444,6 +694,12 @@ export function NotebookTable({ words: initialWords }: { words: Vocabulary[] }) 
       }),
     [query, selectedLanguage, selectedSource, selectedTag, status, wordsList],
   )
+
+  const handleAddWord = (data: Omit<Vocabulary, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const created = addItem(data)
+    setNotice(`Filed “${created.word}” into notebook ✓`)
+    setTimeout(() => setNotice(null), 3500)
+  }
 
   const exportCSV = () => {
     const rows = [
@@ -479,13 +735,12 @@ export function NotebookTable({ words: initialWords }: { words: Vocabulary[] }) 
       if (!text) return
       const lines = text.split('\n').filter((l) => l.trim().length > 0)
       if (lines.length <= 1) return
-      const newItems: Vocabulary[] = []
+      let addedCount = 0
       // Skip header
       for (let i = 1; i < lines.length; i++) {
         const parts = lines[i].split(',').map((p) => p.replace(/^"|"$/g, '').trim())
         if (parts[0] && parts[1]) {
-          newItems.push({
-            id: `import-${Date.now()}-${i}`,
+          addItem({
             word: parts[0],
             reading: parts[1],
             meaning: parts[2] || 'Imported meaning',
@@ -494,14 +749,12 @@ export function NotebookTable({ words: initialWords }: { words: Vocabulary[] }) 
             level: parts[5] || 'N4',
             source: parts[6] || 'CSV Import',
             tags: [{ label: 'imported' }],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
           })
+          addedCount++
         }
       }
-      if (newItems.length > 0) {
-        setWordsList((prev) => [...newItems, ...prev])
-        setNotice(`Imported ${newItems.length} entries into your notebook.`)
+      if (addedCount > 0) {
+        setNotice(`Imported and saved ${addedCount} entries to your notebook ✓`)
         setTimeout(() => setNotice(null), 4000)
       }
     }
@@ -570,6 +823,14 @@ export function NotebookTable({ words: initialWords }: { words: Vocabulary[] }) 
         <div className="bulk-row">
           <span>{filtered.length} ENTRIES</span>
           {notice && <span style={{ color: 'var(--moss)', fontWeight: 500 }}>{notice}</span>}
+          <button
+            className="primary-button"
+            onClick={() => setIsAddingWord(true)}
+            style={{ minHeight: '34px', fontSize: '11px', padding: '0 12px' }}
+            type="button"
+          >
+            <Icon name="plus" size={13} /> Add new word
+          </button>
           <input
             accept=".csv"
             aria-label="Upload CSV file"
@@ -659,6 +920,28 @@ export function NotebookTable({ words: initialWords }: { words: Vocabulary[] }) 
               {selected.reading} {selected.romanization ? `· ${selected.romanization}` : ''}
             </p>
             <p className="drawer-meaning">{selected.meaning}</p>
+
+            <div className="status-picker">
+              <span className="eyebrow" style={{ alignSelf: 'center', marginRight: '6px' }}>
+                Status:
+              </span>
+              {(['new', 'learning', 'known'] as const).map((st) => (
+                <button
+                  className={`status-btn ${selected.status === st ? `active-${st}` : ''}`}
+                  key={st}
+                  onClick={() => {
+                    const updated = updateItem(selected.id, { status: st })
+                    if (updated) setSelected(updated)
+                    setNotice(`Status updated to ${st.toUpperCase()} ✓`)
+                    setTimeout(() => setNotice(null), 2500)
+                  }}
+                  type="button"
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+
             <section>
               <p className="eyebrow">EXAMPLES</p>
               {selected.examples && selected.examples.length > 0 ? (
@@ -704,16 +987,53 @@ export function NotebookTable({ words: initialWords }: { words: Vocabulary[] }) 
               </label>
               <textarea
                 id="personal-note"
-                onChange={(e) =>
-                  setPersonalNotes((prev) => ({ ...prev, [selected.id]: e.target.value }))
-                }
+                onChange={(e) => {
+                  const val = e.target.value
+                  setPersonalNotes((prev) => ({ ...prev, [selected.id]: val }))
+                  updateItem(selected.id, { etymology: val })
+                }}
                 placeholder="The thing that will make this stick…"
-                value={personalNotes[selected.id] || ''}
+                value={personalNotes[selected.id] ?? (selected.etymology || '')}
               />
             </section>
-            <p className="source-line">FOUND IN / {selected.source || 'Study notebook'}</p>
+            <div
+              style={{
+                marginTop: '24px',
+                paddingTop: '16px',
+                borderTop: '1px solid var(--rule)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <p className="source-line">FOUND IN / {selected.source || 'Study notebook'}</p>
+              <button
+                className="delete-word-btn"
+                onClick={() => {
+                  if (
+                    typeof window !== 'undefined' &&
+                    window.confirm(`Remove “${selected.word}” from your notebook?`)
+                  ) {
+                    deleteItem(selected.id)
+                    setSelected(null)
+                    setNotice(`Removed “${selected.word}” from notebook ✓`)
+                    setTimeout(() => setNotice(null), 3000)
+                  }
+                }}
+                type="button"
+              >
+                <Icon name="close" size={12} /> Remove word
+              </button>
+            </div>
           </aside>
         </div>
+      )}
+      {isAddingWord && (
+        <AddWordModal
+          defaultLanguage={selectedLanguage}
+          onAdd={handleAddWord}
+          onClose={() => setIsAddingWord(false)}
+        />
       )}
     </>
   )
@@ -836,6 +1156,27 @@ export function ReadingPassage() {
 
   const handleSaveToNotebook = () => {
     if (!selectedWord) return
+    const parts = selectedWord.reading.split('·')
+    const readingClean = (parts[0] || selectedWord.word).trim()
+    const meaningClean = (parts[1] || selectedWord.reading).trim()
+
+    addVocabularyItem({
+      word: selectedWord.word,
+      reading: readingClean,
+      meaning: meaningClean,
+      language: 'japanese',
+      status: 'learning',
+      level: passage.level.split('·')[0].trim(),
+      source: passage.titleJp,
+      tags: [{ label: 'reading' }, { label: 'graded-reader' }],
+      examples: [
+        {
+          sentence: `文章「${passage.titleJp}」の中で出会った言葉。`,
+          translation: `Found in "${passage.titleEn}"`,
+        },
+      ],
+    })
+
     setSavedStatus(`Added “${selectedWord.word}” to notebook ✓`)
     setTimeout(() => {
       setSavedStatus(null)

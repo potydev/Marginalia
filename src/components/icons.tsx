@@ -8,6 +8,7 @@ export type IconName =
   | 'chart'
   | 'check'
   | 'chevron'
+  | 'close'
   | 'download'
   | 'headphones'
   | 'menu'
@@ -19,6 +20,7 @@ export type IconName =
   | 'search'
   | 'settings'
   | 'sun'
+  | 'trash'
   | 'upload'
 
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
@@ -44,6 +46,7 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
     chart: <path d="M4 19V9m5 10V5m5 14v-7m5 7V3M2 21h20" />,
     check: <path d="m5 12 4 4L19 6" />,
     chevron: <path d="m9 18 6-6-6-6" />,
+    close: <path d="m18 6-12 12M6 6l12 12" />,
     download: <path d="M12 3v12m-5-5 5 5 5-5M4 21h16" />,
     headphones: (
       <path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v7H5a1 1 0 0 1-1-1zm16 0h-3v7h2a1 1 0 0 0 1-1z" />
@@ -78,6 +81,9 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
       </>
     ),
     upload: <path d="M12 21V9m-5 5 5-5 5 5M4 3h16" />,
+    trash: (
+      <path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    ),
   }
 
   return (
