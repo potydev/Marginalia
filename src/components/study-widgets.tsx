@@ -24,6 +24,18 @@ import {
   updateVocabularyItem,
   deleteVocabularyItem,
   recordStudySession,
+  getStoredVocabulary,
+  saveStoredVocabulary,
+  resetVocabularyToDefault,
+  getStoredStudyActivity,
+  saveStoredStudyActivity,
+  getStoredLearnerProfile,
+  saveStoredLearnerProfile,
+  getStoredJournal,
+  saveStoredJournal,
+  getStoredCustomPassage,
+  saveStoredCustomPassage,
+  DEFAULT_STUDY_ACTIVITY,
 } from '@/lib/storage'
 
 function playSpeech(text: string, lang = 'ja-JP', rate = 1) {
@@ -2514,9 +2526,22 @@ export function GrammarViewer() {
 }
 
 export function SettingsPanel() {
+  const { profile, updateProfile } = useLearnerProfileStore()
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const [name, setName] = useState(profile.name)
+  const [targetLang, setTargetLang] = useState(profile.targetLanguage)
+  const [level, setLevel] = useState(profile.level)
+  const [dailyGoal, setDailyGoal] = useState(String(profile.dailyGoalMinutes))
+  const [weeklyGoal, setWeeklyGoal] = useState(String(profile.weeklyGoalMinutes))
+  const [furigana, setFurigana] = useState(profile.furiganaDefault)
+  const [romanization, setRomanization] = useState(profile.romanizationDefault)
+
   const [theme, setTheme] = useState('Paper')
-  const [fontSize, setFontSize] = useState('16')
+  const [fontSize, setFontSize] = useState(String(profile.fontSize || 16))
   const [saved, setSaved] = useState(false)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
 
   useEffect(() => {
     const isNight = document.documentElement.classList.contains('night-ink')
@@ -2528,90 +2553,179 @@ export function SettingsPanel() {
     const isNight = value === 'Night Ink'
     document.documentElement.classList.toggle('night-ink', isNight)
     window.localStorage.setItem('marginalia-theme', isNight ? 'night' : 'paper')
+    updateProfile({ theme: isNight ? 'night' : 'paper' })
   }
 
   const handleFontSizeChange = (val: string) => {
     setFontSize(val)
     document.documentElement.style.fontSize = `${val}px`
+    updateProfile({ fontSize: Number(val) })
   }
 
   const exportBackup = () => {
     const backup = {
-      profile: { user: 'Rani', targetLanguage: 'Japanese', level: 'N4', day: 47 },
-      settings: { theme, fontSize, dailyGoal: '20 minutes', newCardsPerDay: 7 },
+      version: '1.0',
       exportedAt: new Date().toISOString(),
+      profile: getStoredLearnerProfile(),
+      vocabulary: getStoredVocabulary(),
+      activity: getStoredStudyActivity(),
+      journal: getStoredJournal(),
+      customPassage: getStoredCustomPassage(),
     }
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'marginalia-backup.json'
+    a.download = `marginalia-backup-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
+    setToastMsg('Archive downloaded successfully ✓')
+    setTimeout(() => setToastMsg(null), 3000)
+  }
+
+  const handleImportBackup = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const raw = event.target?.result as string
+        const parsed = JSON.parse(raw)
+        if (parsed.vocabulary && Array.isArray(parsed.vocabulary)) {
+          saveStoredVocabulary(parsed.vocabulary)
+        }
+        if (parsed.activity) {
+          saveStoredStudyActivity(parsed.activity)
+        }
+        if (parsed.profile) {
+          saveStoredLearnerProfile(parsed.profile)
+          setName(parsed.profile.name || 'Rani')
+          setTargetLang(parsed.profile.targetLanguage || 'japanese')
+          setLevel(parsed.profile.level || 'N4')
+        }
+        if (parsed.journal && Array.isArray(parsed.journal)) {
+          saveStoredJournal(parsed.journal)
+        }
+        if (parsed.customPassage) {
+          saveStoredCustomPassage(parsed.customPassage)
+        }
+        setToastMsg('Backup archive restored cleanly ✓')
+        setTimeout(() => setToastMsg(null), 3500)
+      } catch (err) {
+        console.error('Failed to parse backup JSON:', err)
+        setToastMsg('Could not read backup file. Please verify JSON format.')
+        setTimeout(() => setToastMsg(null), 3500)
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const handleResetData = () => {
+    resetVocabularyToDefault()
+    saveStoredStudyActivity(DEFAULT_STUDY_ACTIVITY)
+    saveStoredJournal([])
+    saveStoredCustomPassage(null)
+    setShowResetConfirm(false)
+    setToastMsg('Notebook reset to clean paper ✓')
+    setTimeout(() => setToastMsg(null), 3500)
+  }
+
+  const handleSaveSettings = (event: FormEvent) => {
+    event.preventDefault()
+    updateProfile({
+      name: name.trim() || 'Rani',
+      targetLanguage: targetLang as any,
+      level: level.trim() || 'N4',
+      dailyGoalMinutes: Number(dailyGoal) || 15,
+      weeklyGoalMinutes: Number(weeklyGoal) || 100,
+      furiganaDefault: furigana,
+      romanizationDefault: romanization,
+      fontSize: Number(fontSize) || 16,
+    })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 3500)
   }
 
   return (
-    <form
-      className="settings-form"
-      onSubmit={(event) => {
-        event.preventDefault()
-        setSaved(true)
-        setTimeout(() => setSaved(false), 3500)
-      }}
-    >
+    <form className="settings-form" onSubmit={handleSaveSettings}>
       <fieldset>
-        <legend>STUDY</legend>
+        <legend>LEARNER PROFILE</legend>
         <label>
           <span>
-            Language & level<small>The notebook you’re currently using.</small>
+            Learner name<small>How Marginalia addresses your notebook.</small>
           </span>
-          <select defaultValue="Japanese · N4">
-            <option>Japanese · N4</option>
-            <option>Korean · Beginner</option>
-            <option>Spanish · Intermediate</option>
-            <option>English · Advanced</option>
-            <option>Indonesian · Native / Literary</option>
+          <input onChange={(e) => setName(e.target.value)} required type="text" value={name} />
+        </label>
+        <label>
+          <span>
+            Target language<small>Active language for daily dashboard and review stack.</small>
+          </span>
+          <select onChange={(e) => setTargetLang(e.target.value as any)} value={targetLang}>
+            <option value="japanese">Japanese (日本語)</option>
+            <option value="korean">Korean (한국어)</option>
+            <option value="spanish">Spanish (Español)</option>
+            <option value="english">English</option>
+            <option value="indonesian">Indonesian (Bahasa Indonesia)</option>
           </select>
         </label>
+        <label>
+          <span>
+            Current level<small>Graded reader and review badge reference.</small>
+          </span>
+          <input
+            onChange={(e) => setLevel(e.target.value)}
+            placeholder="e.g. N4, Beginner, Intermediate"
+            type="text"
+            value={level}
+          />
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>STUDY GOALS</legend>
         <label>
           <span>
             Daily goal<small>Enough to matter, not enough to dread.</small>
           </span>
-          <select defaultValue="20 minutes">
-            <option>10 minutes</option>
-            <option>20 minutes</option>
-            <option>30 minutes</option>
+          <select onChange={(e) => setDailyGoal(e.target.value)} value={dailyGoal}>
+            <option value="10">10 minutes</option>
+            <option value="15">15 minutes</option>
+            <option value="20">20 minutes</option>
+            <option value="30">30 minutes</option>
           </select>
         </label>
         <label>
-          <span>New cards per day</span>
-          <input defaultValue="7" max="50" min="0" type="number" />
-        </label>
-        <label>
-          <span>Review order</span>
-          <select defaultValue="Mixed">
-            <option>Mixed</option>
-            <option>Due first</option>
-            <option>New first</option>
-          </select>
+          <span>
+            Weekly goal (minutes)<small>Measured on the pen-line progress bar.</small>
+          </span>
+          <input
+            max="600"
+            min="30"
+            onChange={(e) => setWeeklyGoal(e.target.value)}
+            type="number"
+            value={weeklyGoal}
+          />
         </label>
       </fieldset>
+
       <fieldset>
         <legend>READING & SOUND</legend>
         <label>
           <span>Show furigana by default</span>
-          <input defaultChecked type="checkbox" />
+          <input
+            checked={furigana}
+            onChange={(e) => setFurigana(e.target.checked)}
+            type="checkbox"
+          />
         </label>
         <label>
           <span>Show romanization</span>
-          <input type="checkbox" />
-        </label>
-        <label>
-          <span>Audio voice</span>
-          <select defaultValue="Aoi · Tokyo">
-            <option>Aoi · Tokyo</option>
-            <option>Haruto · Tokyo</option>
-          </select>
+          <input
+            checked={romanization}
+            onChange={(e) => setRomanization(e.target.checked)}
+            type="checkbox"
+          />
         </label>
         <label>
           <span>
@@ -2627,8 +2741,9 @@ export function SettingsPanel() {
           />
         </label>
       </fieldset>
+
       <fieldset>
-        <legend>NOTEBOOK</legend>
+        <legend>NOTEBOOK & DATA</legend>
         <label>
           <span>Theme</span>
           <span className="theme-choice">
@@ -2645,22 +2760,98 @@ export function SettingsPanel() {
           </span>
         </label>
         <label>
-          <span>Reminder time</span>
-          <input defaultValue="08:15" type="time" />
+          <span>
+            Export data archive
+            <small>Download your words, review intervals, writing, and profile.</small>
+          </span>
+          <button className="outline-button" onClick={exportBackup} type="button">
+            <Icon name="download" /> Download JSON archive
+          </button>
         </label>
         <label>
           <span>
-            Export your data<small>Words, reviews, writing, and settings archive.</small>
+            Restore from archive<small>Upload a previous marginalia-backup.json file.</small>
           </span>
-          <button className="outline-button" onClick={exportBackup} type="button">
-            <Icon name="download" /> Download archive
+          <button
+            className="outline-button"
+            onClick={() => fileInputRef.current?.click()}
+            type="button"
+          >
+            <Icon name="upload" /> Restore backup
+          </button>
+          <input
+            accept=".json"
+            onChange={handleImportBackup}
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            type="file"
+          />
+        </label>
+        <label>
+          <span>
+            Reset notebook<small>Restore initial 13 starter words and clear custom drafts.</small>
+          </span>
+          <button
+            className="outline-button"
+            onClick={() => setShowResetConfirm(true)}
+            style={{ borderColor: 'var(--vermilion)', color: 'var(--vermilion)' }}
+            type="button"
+          >
+            <Icon name="trash" /> Reset to starter kit
           </button>
         </label>
       </fieldset>
+
       <button className="primary-button settings-save" type="submit">
         Save settings
       </button>
+
       {saved && <p className="saved-note">Filed neatly. Your settings are saved.</p>}
+      {toastMsg && <p className="saved-note">{toastMsg}</p>}
+
+      {showResetConfirm && (
+        <div className="modal-backdrop" onClick={() => setShowResetConfirm(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow" style={{ color: 'var(--vermilion)' }}>
+                  CONFIRM NOTEBOOK RESET
+                </p>
+                <h2>Start from clean paper?</h2>
+              </div>
+              <button
+                aria-label="Close dialog"
+                className="modal-close"
+                onClick={() => setShowResetConfirm(false)}
+                type="button"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+            <p style={{ margin: '16px 0 24px', lineHeight: 1.6, color: 'var(--ink-soft)' }}>
+              This will restore the 13 canonical starter vocabulary words and clean recent review
+              intervals. Your current notes and drafts will be replaced with clean pages.
+            </p>
+            <div className="modal-actions">
+              <button
+                className="outline-button"
+                onClick={() => setShowResetConfirm(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="primary-button"
+                onClick={handleResetData}
+                style={{ background: 'var(--vermilion)' }}
+                type="button"
+              >
+                Yes, reset notebook
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   )
 }

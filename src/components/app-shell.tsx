@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState, type ReactNode } from 'react'
 import { Icon, type IconName } from './icons'
 import { ThemeToggle } from './theme-toggle'
+import { useLearnerProfileStore, useVocabularyStore, useStudyActivityStore } from '@/lib/storage'
 
 const nav: { href: string; label: string; icon: IconName }[] = [
   { href: '/today', label: 'Today', icon: 'notebook' },
@@ -26,16 +27,24 @@ const mobileNav: { href: string; label: string; icon: IconName }[] = [
 ]
 
 const languages = [
-  { code: 'ja', label: 'Japanese · N4', glyph: '日' },
-  { code: 'ko', label: 'Korean · Beginner', glyph: '한' },
-  { code: 'es', label: 'Spanish · Intermedio', glyph: 'E' },
-  { code: 'en', label: 'English · Advanced', glyph: 'A' },
-  { code: 'id', label: 'Indonesian · Sastra', glyph: 'I' },
+  { lang: 'japanese', code: 'ja', label: 'Japanese · N4', glyph: '日' },
+  { lang: 'korean', code: 'ko', label: 'Korean · Beginner', glyph: '한' },
+  { lang: 'spanish', code: 'es', label: 'Spanish · Intermedio', glyph: 'E' },
+  { lang: 'english', code: 'en', label: 'English · Advanced', glyph: 'A' },
+  { lang: 'indonesian', code: 'id', label: 'Indonesian · Sastra', glyph: 'I' },
 ]
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const [currentLang, setCurrentLang] = useState(languages[0])
+  const { profile, updateProfile } = useLearnerProfileStore()
+  const { words } = useVocabularyStore()
+  const { activity } = useStudyActivityStore()
+
+  const currentLang = languages.find((l) => l.lang === profile.targetLanguage) || languages[0]
+  const dueCount = words.filter(
+    (w) => w.language === profile.targetLanguage && w.status !== 'known',
+  ).length
+
   const [showLangMenu, setShowLangMenu] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
 
@@ -82,15 +91,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                   className="nav-item"
                   key={l.code}
                   onClick={() => {
-                    setCurrentLang(l)
+                    updateProfile({
+                      targetLanguage: l.lang as any,
+                      level: l.label.split('·')[1]?.trim() || profile.level,
+                    })
                     setShowLangMenu(false)
                   }}
                   role="option"
-                  aria-selected={l.code === currentLang.code}
+                  aria-selected={l.lang === profile.targetLanguage}
                   style={{
                     width: '100%',
                     justifyContent: 'flex-start',
-                    background: l.code === currentLang.code ? 'var(--paper-dark)' : 'transparent',
+                    background:
+                      l.lang === profile.targetLanguage ? 'var(--paper-dark)' : 'transparent',
                     border: 0,
                     cursor: 'pointer',
                     padding: '8px',
@@ -114,7 +127,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <button
             aria-expanded={showProfile}
-            aria-label="Open Rani’s profile"
+            aria-label={`Open ${profile.name}’s profile`}
             className="profile-mark"
             onClick={() => {
               setShowProfile(!showProfile)
@@ -122,7 +135,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             }}
             type="button"
           >
-            R
+            {profile.name.charAt(0).toUpperCase() || 'R'}
           </button>
 
           {showProfile && (
@@ -155,9 +168,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                   ×
                 </button>
               </div>
-              <strong style={{ fontSize: '20px', marginTop: '6px' }}>Rani</strong>
+              <strong style={{ fontSize: '20px', marginTop: '6px' }}>{profile.name}</strong>
               <span className="word-popover-reading" style={{ marginTop: '2px' }}>
-                Day 47 · Level N4 Japanese
+                Day {activity.streakDays} · Level {profile.level}{' '}
+                {currentLang.label.split('·')[0].trim()}
               </span>
               <div
                 style={{
@@ -168,10 +182,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                 }}
               >
                 <p style={{ margin: '4px 0', color: 'var(--ink-soft)' }}>
-                  312 words filed in notebook
+                  {words.length} words filed in notebook
                 </p>
                 <p style={{ margin: '4px 0', color: 'var(--ink-soft)' }}>
-                  18 reviews waiting today
+                  {dueCount} reviews waiting today
                 </p>
               </div>
               <Link
