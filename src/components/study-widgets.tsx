@@ -10,11 +10,14 @@ import {
   type FormEvent,
 } from 'react'
 import type { Vocabulary } from '@/payload-types'
+import Link from 'next/link'
 import { Icon } from './icons'
-import { Stamp } from './page-parts'
+import { PageHeader, Stamp } from './page-parts'
 import { Button, IndexCard, Input, Table, Tabs, Tag, WordPopover } from './ui'
 import {
   useVocabularyStore,
+  useStudyActivityStore,
+  useLearnerProfileStore,
   addVocabularyItem,
   updateVocabularyItem,
   deleteVocabularyItem,
@@ -93,6 +96,8 @@ export function LandingDemo() {
 }
 
 export function WordOfDayCard() {
+  const { words, addItem } = useVocabularyStore()
+  const isPresent = words.some((w) => w.word === '寄り道' && w.language === 'japanese')
   const [added, setAdded] = useState(false)
   const [playing, setPlaying] = useState(false)
 
@@ -103,7 +108,7 @@ export function WordOfDayCard() {
   }
 
   const handleAdd = () => {
-    addVocabularyItem({
+    addItem({
       word: '寄り道',
       reading: 'よりみち',
       romanization: 'yorimichi',
@@ -124,6 +129,8 @@ export function WordOfDayCard() {
     })
     setAdded(true)
   }
+
+  const isSaved = isPresent || added
 
   return (
     <section className="word-day">
@@ -153,13 +160,14 @@ export function WordOfDayCard() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <button
-          className={added ? 'ink-button' : 'outline-button'}
+          className={isSaved ? 'ink-button' : 'outline-button'}
+          disabled={isSaved}
           onClick={handleAdd}
           type="button"
         >
-          {added ? (
+          {isSaved ? (
             <>
-              <Icon name="book" /> Added to notebook ✓
+              <Icon name="book" /> In notebook ✓
             </>
           ) : (
             <>
@@ -177,66 +185,192 @@ export function WordOfDayCard() {
   )
 }
 
-const reviewCards = [
-  {
-    prompt: '木漏れ日',
-    reading: 'こもれび · komorebi',
-    meaning: 'sunlight filtering through trees',
-    sentence: '窓から木漏れ日が入ってきた。',
-  },
-  {
-    prompt: '寄り道',
-    reading: 'よりみち · yorimichi',
-    meaning: 'a detour; stopping somewhere on the way',
-    sentence: '帰りに本屋へ寄り道した。',
-  },
-  {
-    prompt: 'たしかに',
-    reading: 'たしかに · tashika ni',
-    meaning: 'certainly; that is true',
-    sentence: 'たしかに、その考え方もありますね。',
-  },
-  {
-    prompt: '雨宿り',
-    reading: 'あまやどり · amayadori',
-    meaning: 'sheltering from the rain',
-    sentence: '軒先で雨宿りしながら待った。',
-  },
-  {
-    prompt: '勉強',
-    reading: 'べんきょう · benkyō',
-    meaning: 'to study, diligence',
-    sentence: '毎朝、少しずつ勉強を重ねる。',
-  },
-]
+const LANG_SPEECH_MAP: Record<string, string> = {
+  japanese: 'ja-JP',
+  korean: 'ko-KR',
+  spanish: 'es-ES',
+  english: 'en-US',
+  indonesian: 'id-ID',
+}
+
+function normalizeAnswerText(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.,/#!$%^&*;:{}=\-_`~()?"'，。、]/g, '')
+}
+
+interface ReviewCard {
+  id: string
+  prompt: string
+  reading: string
+  plainReading: string
+  romanization: string
+  meaning: string
+  sentence: string
+  sentenceTranslation: string
+  language: string
+  status: 'new' | 'learning' | 'known'
+}
 
 export function ReviewSession() {
+  const { words, recordReview } = useVocabularyStore()
+  const { activity, recordSession } = useStudyActivityStore()
+  const { profile } = useLearnerProfileStore()
+
+  const [deckMode, setDeckMode] = useState<'due' | 'all'>('due')
+  const [selectedLang, setSelectedLang] = useState<string>(profile.targetLanguage || 'japanese')
+  const [mode, setMode] = useState<'recognition' | 'recall' | 'listening'>('recognition')
+
+  const [queue, setQueue] = useState<ReviewCard[]>([])
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [finished, setFinished] = useState(false)
-  const [mode, setMode] = useState<'recognition' | 'recall' | 'listening'>('recognition')
   const [answer, setAnswer] = useState('')
+  const [recallFeedback, setRecallFeedback] = useState<{ correct: boolean; text: string } | null>(
+    null,
+  )
   const [dragX, setDragX] = useState(0)
+  const [missedWords, setMissedWords] = useState<string[]>([])
+  const [sessionStartTime, setSessionStartTime] = useState<number>(() => Date.now())
+  const [sessionDurationSec, setSessionDurationSec] = useState<number>(0)
   const touchStart = useRef<number | null>(null)
-  const card = reviewCards[index]
 
-  const rate = (_recall?: 'Again' | 'Hard' | 'Good' | 'Easy') => {
-    if (index === reviewCards.length - 1) {
+  // Filter pool
+  const languageWords = useMemo(
+    () => words.filter((w) => selectedLang === 'all' || w.language === selectedLang),
+    [words, selectedLang],
+  )
+  const dueWords = useMemo(() => languageWords.filter((w) => w.status !== 'known'), [languageWords])
+  const activePool = deckMode === 'due' ? dueWords : languageWords
+
+  // Build deck from words
+  const buildDeck = (sourceList: typeof words) => {
+    return sourceList.map((w) => ({
+      id: w.id,
+      prompt: w.word,
+      reading: `${w.reading}${w.romanization ? ` · ${w.romanization}` : ''}`,
+      plainReading: w.reading,
+      romanization: w.romanization || '',
+      meaning: w.meaning,
+      sentence: w.examples?.[0]?.sentence || '',
+      sentenceTranslation: w.examples?.[0]?.translation || '',
+      language: w.language,
+      status: w.status,
+    }))
+  }
+
+  // Initialize deck
+  useEffect(() => {
+    if (activePool.length > 0) {
+      setQueue(buildDeck(activePool))
+      setIndex(0)
+      setFlipped(false)
+      setFinished(false)
+      setAnswer('')
+      setRecallFeedback(null)
+      setMissedWords([])
+      setSessionStartTime(Date.now())
+    } else {
+      setQueue([])
+    }
+  }, [deckMode, selectedLang, activePool.length])
+
+  const card: ReviewCard | undefined = queue[index]
+
+  const playCardAudio = () => {
+    if (card) {
+      playSpeech(card.prompt, LANG_SPEECH_MAP[card.language] || 'ja-JP')
+    }
+  }
+
+  const checkAnswer = () => {
+    if (!card) return
+    const cleaned = normalizeAnswerText(answer)
+    const promptNorm = normalizeAnswerText(card.prompt)
+    const readingNorm = normalizeAnswerText(card.plainReading)
+    const romajiNorm = normalizeAnswerText(card.romanization)
+    const meaningNorm = normalizeAnswerText(card.meaning)
+
+    const isMatch =
+      cleaned.length > 0 &&
+      (cleaned === promptNorm ||
+        cleaned === readingNorm ||
+        cleaned === romajiNorm ||
+        meaningNorm.includes(cleaned))
+
+    if (isMatch) {
+      setRecallFeedback({ correct: true, text: 'Spot on!' })
+    } else {
+      setRecallFeedback({
+        correct: false,
+        text: `Expected: ${card.plainReading} (${card.romanization || card.prompt})`,
+      })
+    }
+    setFlipped(true)
+  }
+
+  const rate = (rating: 'Again' | 'Hard' | 'Good' | 'Easy') => {
+    if (!card) return
+
+    // Record SRS update to vocabulary store
+    recordReview(card.id, rating)
+
+    const updatedQueue = [...queue]
+    const updatedMissed = [...missedWords]
+
+    if (rating === 'Again') {
+      if (!updatedMissed.includes(card.prompt)) {
+        updatedMissed.push(card.prompt)
+        setMissedWords(updatedMissed)
+      }
+      // Re-queue card to end of this session for immediate reinforcement
+      updatedQueue.push(card)
+      setQueue(updatedQueue)
+    }
+
+    if (index + 1 >= updatedQueue.length) {
+      // Completed session
+      const elapsed = Math.max(1, Math.round((Date.now() - sessionStartTime) / 1000))
+      setSessionDurationSec(elapsed)
+      const minutes = Math.max(1, Math.round(elapsed / 60))
+      const totalReviewed = updatedQueue.length
+      const accuracy = Math.min(
+        100,
+        Math.round(((totalReviewed - updatedMissed.length) / Math.max(1, totalReviewed)) * 100),
+      )
+
+      recordSession({
+        minutes,
+        cardsReviewed: totalReviewed,
+        accuracy,
+        missedWords: updatedMissed,
+      })
       setFinished(true)
     } else {
       setIndex(index + 1)
       setFlipped(false)
       setAnswer('')
+      setRecallFeedback(null)
       setDragX(0)
     }
   }
 
-  const playCardAudio = () => {
-    playSpeech(card.prompt)
-  }
-
+  // Keyboard shortcut listeners
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // If typing in input, don't capture space or numbers
+      const target = event.target as HTMLElement
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          if (!flipped) {
+            checkAnswer()
+          }
+        }
+        return
+      }
+
       if (event.code === 'Space' && mode === 'recognition') {
         event.preventDefault()
         setFlipped((value) => !value)
@@ -245,8 +379,8 @@ export function ReviewSession() {
       } else if (event.key === 'Escape') {
         setFlipped(false)
       } else if (flipped && ['1', '2', '3', '4'].includes(event.key)) {
-        const rates: ('Again' | 'Hard' | 'Good' | 'Easy')[] = ['Again', 'Hard', 'Good', 'Easy']
-        const pick = rates[Number(event.key) - 1]
+        const ratings: ('Again' | 'Hard' | 'Good' | 'Easy')[] = ['Again', 'Hard', 'Good', 'Easy']
+        const pick = ratings[Number(event.key) - 1]
         rate(pick)
       }
     }
@@ -254,56 +388,227 @@ export function ReviewSession() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  if (finished) {
+  // When no cards in active deck
+  if (activePool.length === 0 || queue.length === 0) {
     return (
-      <section className="session-summary">
-        <Stamp tone="green">SESSION FILED</Stamp>
-        <p className="eyebrow">TEACHER’S NOTE · 08:42</p>
-        <h2>Good work. 木漏れ日 still needs another meeting.</h2>
-        <div className="summary-stats">
-          <p>
-            <strong>87%</strong>
-            <span>accuracy</span>
+      <div className="review-workspace">
+        <PageHeader
+          eyebrow="SPACED REPETITION / ALL CAUGHT UP"
+          note={
+            <>
+              <span>0 DUE</span>
+              <p>
+                All cards
+                <br />
+                filed quietly.
+              </p>
+            </>
+          }
+          title="Review"
+        />
+        <section className="session-summary" style={{ marginTop: '28px' }}>
+          <Stamp tone="green">ALL FILED</Stamp>
+          <p className="eyebrow">DECK STATUS · {selectedLang.toUpperCase()}</p>
+          <h2>No cards are due for review right now.</h2>
+          <p
+            style={{
+              maxWidth: '440px',
+              margin: '0 auto 28px',
+              color: 'var(--ink-soft)',
+              lineHeight: 1.6,
+            }}
+          >
+            Every word in your {selectedLang} notebook has been reviewed. You can practice ahead
+            with all {languageWords.length} words, read a new text, or add fresh entries from the
+            notebook.
           </p>
-          <p>
-            <strong>6:14</strong>
-            <span>time</span>
-          </p>
-          <p>
-            <strong>2</strong>
-            <span>words to revisit</span>
-          </p>
-        </div>
-        <Button
-          onClick={() => (setFinished(false), setIndex(0), setFlipped(false))}
-          type="button"
-          variant="ink"
-        >
-          Return to the stack
-        </Button>
-      </section>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              className="primary-button"
+              onClick={() => {
+                setDeckMode('all')
+                setQueue(buildDeck(languageWords))
+                setIndex(0)
+                setFlipped(false)
+                setFinished(false)
+                setSessionStartTime(Date.now())
+              }}
+              type="button"
+            >
+              Review all {languageWords.length} words anyway
+            </button>
+            <Link className="outline-button" href="/notebook">
+              <Icon name="book" /> Open Notebook
+            </Link>
+            <Link className="outline-button" href="/today">
+              Today's page
+            </Link>
+          </div>
+        </section>
+      </div>
     )
   }
 
+  // When session is completed
+  if (finished) {
+    const elapsedMinutes = Math.floor(sessionDurationSec / 60)
+    const elapsedSecs = sessionDurationSec % 60
+    const timeFormatted = `${elapsedMinutes}:${String(elapsedSecs).padStart(2, '0')}`
+    const accuracy = Math.min(
+      100,
+      Math.round(((queue.length - missedWords.length) / Math.max(1, queue.length)) * 100),
+    )
+    const currentTime = new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+
+    return (
+      <div className="review-workspace">
+        <PageHeader
+          eyebrow={`SPACED REPETITION / SESSION ${activity.sessions.length}`}
+          note={
+            <>
+              <span>FILED</span>
+              <p>
+                {queue.length} cards
+                <br />
+                in the journal.
+              </p>
+            </>
+          }
+          title="Review filed"
+        />
+        <section className="session-summary" style={{ marginTop: '28px' }}>
+          <Stamp tone="green">SESSION FILED</Stamp>
+          <p className="eyebrow">TEACHER’S NOTE · {currentTime}</p>
+          <h2>
+            {missedWords.length > 0
+              ? `Good work. ${missedWords.slice(0, 3).join(', ')} still need another meeting.`
+              : 'Every card remembered with quiet confidence.'}
+          </h2>
+          <div className="summary-stats">
+            <p>
+              <strong>{accuracy}%</strong>
+              <span>accuracy</span>
+            </p>
+            <p>
+              <strong>{timeFormatted}</strong>
+              <span>time</span>
+            </p>
+            <p>
+              <strong>{missedWords.length}</strong>
+              <span>words to revisit</span>
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Button
+              onClick={() => {
+                setQueue(buildDeck(activePool))
+                setIndex(0)
+                setFlipped(false)
+                setFinished(false)
+                setAnswer('')
+                setRecallFeedback(null)
+                setMissedWords([])
+                setSessionStartTime(Date.now())
+              }}
+              type="button"
+              variant="ink"
+            >
+              Review this stack again
+            </Button>
+            <Link className="outline-button" href="/notebook">
+              <Icon name="book" /> Return to Notebook
+            </Link>
+            <Link className="outline-button" href="/today">
+              Today's page
+            </Link>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  const estimatedMinutes = Math.max(1, Math.ceil(dueWords.length * 0.7))
+
   return (
     <div className="review-workspace">
+      <PageHeader
+        eyebrow={`SPACED REPETITION / SESSION ${activity.sessions.length + 1}`}
+        note={
+          <>
+            <span>{dueWords.length} DUE</span>
+            <p>
+              About {estimatedMinutes}
+              <br />
+              quiet minutes.
+            </p>
+          </>
+        }
+        title="Review"
+      />
+
       <div className="review-progress">
-        <span style={{ width: `${((index + 1) / reviewCards.length) * 100}%` }} />
+        <span style={{ width: `${((index + 1) / queue.length) * 100}%` }} />
       </div>
+
+      <div className="deck-filter-bar">
+        <div className="deck-filter-options">
+          <Tabs
+            items={['due', 'all'] as const}
+            label="Deck"
+            onChange={(item) => setDeckMode(item)}
+            value={deckMode}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <select
+            aria-label="Filter language"
+            className="filter-select"
+            onChange={(e) => setSelectedLang(e.target.value)}
+            style={{
+              padding: '4px 8px',
+              font: '400 10px/1 var(--mono)',
+              border: '1px solid var(--rule)',
+              borderRadius: '2px',
+              background: 'transparent',
+              color: 'var(--ink)',
+            }}
+            value={selectedLang}
+          >
+            <option value="japanese">Japanese</option>
+            <option value="korean">Korean</option>
+            <option value="spanish">Spanish</option>
+            <option value="english">English</option>
+            <option value="indonesian">Indonesian</option>
+            <option value="all">All languages</option>
+          </select>
+          <Tabs
+            items={['recognition', 'recall', 'listening'] as const}
+            label="Card type"
+            onChange={(item) => {
+              setMode(item)
+              setFlipped(false)
+              setAnswer('')
+              setRecallFeedback(null)
+            }}
+            value={mode}
+          />
+        </div>
+      </div>
+
       <div className="review-meta">
         <span>
-          {String(index + 1).padStart(2, '0')} / {String(reviewCards.length).padStart(2, '0')}
+          {String(index + 1).padStart(2, '0')} / {String(queue.length).padStart(2, '0')} ·{' '}
+          {card.language.toUpperCase()}
         </span>
-        <Tabs
-          items={['recognition', 'recall', 'listening'] as const}
-          label="Card type"
-          onChange={(item) => {
-            setMode(item)
-            setFlipped(false)
-          }}
-          value={mode}
-        />
+        <span>
+          {deckMode === 'due' ? 'DUE QUEUE' : 'FULL COLLECTION'} · {card.status.toUpperCase()}
+        </span>
       </div>
+
       <div className="swipe-stage">
         <span className="swipe-cue swipe-again">← AGAIN</span>
         <span className="swipe-cue swipe-good">GOOD →</span>
@@ -337,7 +642,9 @@ export function ReviewSession() {
         >
           {!flipped ? (
             <div className="review-face">
-              <p className="eyebrow">{mode.toUpperCase()} · JAPANESE</p>
+              <p className="eyebrow">
+                {mode.toUpperCase()} · {card.language.toUpperCase()}
+              </p>
               {mode === 'listening' ? (
                 <>
                   <button
@@ -351,36 +658,37 @@ export function ReviewSession() {
                   >
                     <Icon name="audio" size={34} />
                   </button>
-                  <p className="card-instruction">Listen, then write what you hear.</p>
+                  <p className="card-instruction">Listen carefully, then write what you hear.</p>
                 </>
               ) : (
                 <>
                   <p className="review-word">{mode === 'recall' ? card.meaning : card.prompt}</p>
                   <p className="card-instruction">
-                    {mode === 'recall' ? 'Write the Japanese.' : 'Space or tap to turn the card.'}
+                    {mode === 'recall'
+                      ? `Write the ${card.language}. Press Enter to check.`
+                      : 'Space or tap to turn the card.'}
                   </p>
                 </>
               )}
               {mode !== 'recognition' && (
-                <span className="answer-wrap">
+                <span className="answer-wrap" onClick={(e) => e.stopPropagation()}>
                   <Input
                     aria-label="Your answer"
                     onChange={(event) => setAnswer(event.target.value)}
-                    onClick={(event) => event.stopPropagation()}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') {
                         event.stopPropagation()
-                        setFlipped(true)
+                        checkAnswer()
                       }
                     }}
-                    placeholder="Write your answer…"
+                    placeholder={`Write your answer in ${card.language}…`}
                     value={answer}
                   />
                   <button
                     className="ink-button"
                     onClick={(event) => {
                       event.stopPropagation()
-                      setFlipped(true)
+                      checkAnswer()
                     }}
                     type="button"
                   >
@@ -395,7 +703,30 @@ export function ReviewSession() {
               <p className="review-word small">{card.prompt}</p>
               <p className="review-reading">{card.reading}</p>
               <p className="review-meaning">{card.meaning}</p>
-              <p className="review-example">{card.sentence}</p>
+              {card.sentence && (
+                <div style={{ marginTop: '12px' }}>
+                  <p className="review-example">{card.sentence}</p>
+                  {card.sentenceTranslation && (
+                    <p
+                      style={{
+                        font: '400 12px/1.4 var(--sans)',
+                        color: 'var(--ink-soft)',
+                        marginTop: '4px',
+                      }}
+                    >
+                      {card.sentenceTranslation}
+                    </p>
+                  )}
+                </div>
+              )}
+              {recallFeedback && (
+                <div
+                  className={`recall-feedback ${recallFeedback.correct ? 'correct' : 'incorrect'}`}
+                >
+                  {recallFeedback.correct ? '✓ ' : '✕ '}
+                  {recallFeedback.text}
+                </div>
+              )}
               <button
                 className="audio-label"
                 onClick={(e) => {
@@ -405,19 +736,20 @@ export function ReviewSession() {
                 style={{ background: 'transparent', border: 0, cursor: 'pointer' }}
                 type="button"
               >
-                <Icon name="audio" /> Hear it
+                <Icon name="audio" /> Hear pronunciation
               </button>
             </div>
           )}
         </IndexCard>
       </div>
+
       {flipped && (
         <div className="rating-row">
           {[
             ['Again', '10 min'],
-            ['Hard', '2 days'],
-            ['Good', '6 days'],
-            ['Easy', '3 weeks'],
+            ['Hard', '1 day'],
+            ['Good', '3 days'],
+            ['Easy', '7 days'],
           ].map(([label, interval], i) => (
             <button
               key={label}
@@ -431,6 +763,7 @@ export function ReviewSession() {
           ))}
         </div>
       )}
+
       <p className="shortcut-legend">SPACE FLIP · 1–4 RATE · A PLAY AUDIO · ESC LEAVE</p>
     </div>
   )

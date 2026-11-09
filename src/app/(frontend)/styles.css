@@ -1112,6 +1112,36 @@
   text-align: center;
   letter-spacing: 0.08em;
 }
+.recall-feedback {
+  margin: 14px 0 6px;
+  padding: 6px 14px;
+  border-radius: 2px;
+  font: 500 11px/1.4 var(--mono);
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+.recall-feedback.correct {
+  color: var(--moss);
+  background: color-mix(in srgb, var(--moss) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--moss) 35%, transparent);
+}
+.recall-feedback.incorrect {
+  color: var(--vermilion);
+  background: color-mix(in srgb, var(--vermilion) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vermilion) 35%, transparent);
+}
+.deck-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule);
+}
+.deck-filter-bar .tabs-component button {
+  font-size: 10px;
+}
 .session-summary {
   max-width: 760px;
   margin: 50px auto;

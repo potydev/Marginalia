@@ -6,7 +6,8 @@ export const fallbackVocabulary: Vocabulary[] = [
     word: '木漏れ日',
     reading: 'こもれび',
     romanization: 'komorebi',
-    meaning: 'Sunlight filtering through the leaves of trees, creating shifting patterns of light and shadow.',
+    meaning:
+      'Sunlight filtering through the leaves of trees, creating shifting patterns of light and shadow.',
     language: 'japanese',
     status: 'learning',
     level: 'N4',
@@ -16,7 +17,8 @@ export const fallbackVocabulary: Vocabulary[] = [
         id: 'ex-1',
         sentence: '窓を開けると、机の上に木漏れ日が静かに落ちていた。',
         reading: 'Mado o akeru to, tsukue no ue ni komorebi ga shizuka ni ochite ita.',
-        translation: 'When I opened the window, sunlight filtering through the trees fell quietly onto my desk.',
+        translation:
+          'When I opened the window, sunlight filtering through the trees fell quietly onto my desk.',
       },
       {
         id: 'ex-2',
@@ -25,7 +27,8 @@ export const fallbackVocabulary: Vocabulary[] = [
         translation: 'Under the dappled sunlight, I leisurely read through my afternoon book.',
       },
     ],
-    etymology: 'Compound of 木 (ko, tree) + 漏れ (more, leaking/filtering through) + 日 (hi/bi, sun/light).',
+    etymology:
+      'Compound of 木 (ko, tree) + 漏れ (more, leaking/filtering through) + 日 (hi/bi, sun/light).',
     source: 'The Café on a Rainy Day, page 12',
     conjugations: [
       { id: 'c-1', form: 'Noun form', value: '木漏れ日 (komorebi)' },
@@ -50,7 +53,8 @@ export const fallbackVocabulary: Vocabulary[] = [
         id: 'ex-3',
         sentence: '仕事の帰りに、駅前の古本屋へ少し寄り道をした。',
         reading: 'Shigoto no kaeri ni, ekimae no furuhonya e sukoshi yorimichi o shita.',
-        translation: 'On my way back from work, I made a short detour to the secondhand bookshop by the station.',
+        translation:
+          'On my way back from work, I made a short detour to the secondhand bookshop by the station.',
       },
       {
         id: 'ex-4',
@@ -59,7 +63,8 @@ export const fallbackVocabulary: Vocabulary[] = [
         translation: 'If you keep making detours, the sun will set before you know it.',
       },
     ],
-    etymology: 'From the verb 寄る (yoru, to drop by, approach) and 道 (michi, path, road). Implies wandering off the main route.',
+    etymology:
+      'From the verb 寄る (yoru, to drop by, approach) and 道 (michi, path, road). Implies wandering off the main route.',
     source: 'Conversation with Tanaka-san',
     conjugations: [
       { id: 'c-4', form: 'Suru-verb (plain)', value: '寄り道する (yorimichi suru)' },
@@ -75,7 +80,8 @@ export const fallbackVocabulary: Vocabulary[] = [
     word: 'たしかに',
     reading: 'たしかに',
     romanization: 'tashika ni',
-    meaning: 'Certainly; without a doubt; that is true (often used to concede a point before adding nuance).',
+    meaning:
+      'Certainly; without a doubt; that is true (often used to concede a point before adding nuance).',
     language: 'japanese',
     status: 'learning',
     level: 'N4',
@@ -94,7 +100,8 @@ export const fallbackVocabulary: Vocabulary[] = [
         translation: 'It was certainly cold yesterday, but today the wind is gentle.',
       },
     ],
-    etymology: 'Adverbial form of the adjective 確か (tashika, sure, definite) with the adverb-forming particle に (ni).',
+    etymology:
+      'Adverbial form of the adjective 確か (tashika, sure, definite) with the adverb-forming particle に (ni).',
     source: 'NHK Easy News discussion',
     conjugations: [
       { id: 'c-8', form: 'Adverbial', value: 'たしかに (tashika ni)' },
@@ -108,7 +115,8 @@ export const fallbackVocabulary: Vocabulary[] = [
     word: '勉強',
     reading: 'べんきょう',
     romanization: 'benkyō',
-    meaning: 'Study, diligence; learning from experience; also used idiomatically by merchants for giving a discount.',
+    meaning:
+      'Study, diligence; learning from experience; also used idiomatically by merchants for giving a discount.',
     language: 'japanese',
     status: 'known',
     level: 'N5',
@@ -121,7 +129,8 @@ export const fallbackVocabulary: Vocabulary[] = [
         translation: 'Every morning without fail, I keep up twenty minutes of study.',
       },
     ],
-    etymology: 'Historically composed of 勉 (ben, exertion, diligence) + 強 (kyō, forcing strength). Originates from striving against difficulty.',
+    etymology:
+      'Historically composed of 勉 (ben, exertion, diligence) + 強 (kyō, forcing strength). Originates from striving against difficulty.',
     source: 'First textbook chapter',
     conjugations: [
       { id: 'c-10', form: 'Plain present', value: '勉強する (benkyō suru)' },
@@ -136,7 +145,8 @@ export const fallbackVocabulary: Vocabulary[] = [
     word: '雨宿り',
     reading: 'あまやどり',
     romanization: 'amayadori',
-    meaning: 'Taking shelter from the rain under an awning, eaves, or inside an entrance until it passes.',
+    meaning:
+      'Taking shelter from the rain under an awning, eaves, or inside an entrance until it passes.',
     language: 'japanese',
     status: 'new',
     level: 'N4',
@@ -146,7 +156,8 @@ export const fallbackVocabulary: Vocabulary[] = [
         id: 'ex-8',
         sentence: '軒先で雨宿りをしながら、通り過ぎる車を眺めていた。',
         reading: 'Nokisaki de amayadori o shinagara, tōrisugiru kuruma o nagamete ita.',
-        translation: 'While sheltering from the rain under the eaves, I watched the cars passing by.',
+        translation:
+          'While sheltering from the rain under the eaves, I watched the cars passing by.',
       },
     ],
     etymology: '雨 (ama, rain) + 宿り (yadori, lodging/dwelling temporary shelter).',
@@ -200,7 +211,8 @@ export const fallbackVocabulary: Vocabulary[] = [
         translation: 'Every time I open a new book, my heart flutters with excitement.',
       },
     ],
-    etymology: 'Native Korean expressive verb capturing the physical feeling of an unsteady, excited heartbeat.',
+    etymology:
+      'Native Korean expressive verb capturing the physical feeling of an unsteady, excited heartbeat.',
     source: 'Korean dialogue unit 3',
     conjugations: [
       { id: 'c-16', form: 'Present polite', value: '설레요 (seol-le-yo)' },
@@ -239,7 +251,8 @@ export const fallbackVocabulary: Vocabulary[] = [
     word: 'Sobremesa',
     reading: 'so-bre-me-sa',
     romanization: 'sobremesa',
-    meaning: 'The lingering period after a meal spent sharing conversation, coffee, and stories around the dining table.',
+    meaning:
+      'The lingering period after a meal spent sharing conversation, coffee, and stories around the dining table.',
     language: 'spanish',
     status: 'known',
     level: 'Intermediate',
@@ -252,7 +265,8 @@ export const fallbackVocabulary: Vocabulary[] = [
         translation: 'The table talk lasted nearly three hours over coffee and fond memories.',
       },
     ],
-    etymology: 'From sobre (over / upon) + mesa (table). A cultural cornerstone of Spanish and Latin American dining.',
+    etymology:
+      'From sobre (over / upon) + mesa (table). A cultural cornerstone of Spanish and Latin American dining.',
     source: 'Madrid travel journal',
     conjugations: [{ id: 'c-20', form: 'Noun (f)', value: 'La sobremesa' }],
     createdAt: '2026-09-12T18:00:00.000Z',
@@ -276,7 +290,8 @@ export const fallbackVocabulary: Vocabulary[] = [
         translation: 'In the stillness of the early morning, words are heard with greater clarity.',
       },
     ],
-    etymology: 'Derived from madrugar (to rise early), from Latin maturare (to ripen, act in good season).',
+    etymology:
+      'Derived from madrugar (to rise early), from Latin maturare (to ripen, act in good season).',
     source: 'Short story anthology',
     conjugations: [
       { id: 'c-21', form: 'Noun (f)', value: 'La madrugada' },
@@ -290,7 +305,8 @@ export const fallbackVocabulary: Vocabulary[] = [
     word: 'Petrichor',
     reading: 'pet-ri-kor',
     romanization: 'petrichor',
-    meaning: 'The distinctive, pleasant earthy scent that accompanies the first rain after a long period of warm, dry weather.',
+    meaning:
+      'The distinctive, pleasant earthy scent that accompanies the first rain after a long period of warm, dry weather.',
     language: 'english',
     status: 'known',
     level: 'Advanced',
@@ -298,12 +314,16 @@ export const fallbackVocabulary: Vocabulary[] = [
     examples: [
       {
         id: 'ex-14',
-        sentence: 'The sudden October shower released the sharp, nostalgic scent of petrichor from the pavement.',
-        reading: 'The sudden October shower released the sharp, nostalgic scent of petrichor from the pavement.',
-        translation: 'Hujan tiba-tiba di bulan Oktober melepaskan aroma petrichor yang tajam dan bernostalgia dari aspal jalan.',
+        sentence:
+          'The sudden October shower released the sharp, nostalgic scent of petrichor from the pavement.',
+        reading:
+          'The sudden October shower released the sharp, nostalgic scent of petrichor from the pavement.',
+        translation:
+          'Hujan tiba-tiba di bulan Oktober melepaskan aroma petrichor yang tajam dan bernostalgia dari aspal jalan.',
       },
     ],
-    etymology: 'Coined in 1964 from Greek petra (stone) and ichor (the ethereal fluid flowing in the veins of gods).',
+    etymology:
+      'Coined in 1964 from Greek petra (stone) and ichor (the ethereal fluid flowing in the veins of gods).',
     source: 'Essay on weather and memory',
     conjugations: [{ id: 'c-23', form: 'Noun (uncountable)', value: 'Petrichor' }],
     createdAt: '2026-09-01T15:00:00.000Z',
@@ -314,7 +334,8 @@ export const fallbackVocabulary: Vocabulary[] = [
     word: 'Renjana',
     reading: 'ren-ja-na',
     romanization: 'renjana',
-    meaning: 'Rasa hati yang kuat; gairah atau kerinduan yang mendalam terhadap sesuatu hal atau karya.',
+    meaning:
+      'Rasa hati yang kuat; gairah atau kerinduan yang mendalam terhadap sesuatu hal atau karya.',
     language: 'indonesian',
     status: 'known',
     level: 'Intermediate',
@@ -341,7 +362,8 @@ export const fallbackVocabulary: Vocabulary[] = [
     word: 'Semilir',
     reading: 'se-mi-lir',
     romanization: 'semilir',
-    meaning: 'Hembusan angin sepoi-sepoi yang lembut, sejuk, dan menenangkan di bawah naungan pohon.',
+    meaning:
+      'Hembusan angin sepoi-sepoi yang lembut, sejuk, dan menenangkan di bawah naungan pohon.',
     language: 'indonesian',
     status: 'known',
     level: 'Beginner',
@@ -351,10 +373,12 @@ export const fallbackVocabulary: Vocabulary[] = [
         id: 'ex-16',
         sentence: 'Semilir angin sore membalik lembar-lembar buku catatan di atas meja kayu.',
         reading: 'Semilir angin sore membalik lembar-lembar buku catatan di atas meja kayu.',
-        translation: 'The gentle afternoon breeze turned the pages of the notebook on the wooden table.',
+        translation:
+          'The gentle afternoon breeze turned the pages of the notebook on the wooden table.',
       },
     ],
-    etymology: 'Kata serapan dari bahasa Jawa silir/semilir yang menggambarkan hawa sejuk angin perlahan.',
+    etymology:
+      'Kata serapan dari bahasa Jawa silir/semilir yang menggambarkan hawa sejuk angin perlahan.',
     source: 'Jurnal sore hari',
     conjugations: [{ id: 'c-26', form: 'Adjektiva / Nomina', value: 'Angin semilir' }],
     createdAt: '2026-09-08T16:00:00.000Z',
