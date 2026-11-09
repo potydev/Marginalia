@@ -43,13 +43,38 @@ export interface LearnerProfile {
   fontSize: number
 }
 
+export interface JournalEntry {
+  id: string
+  date: string
+  promptId: string
+  promptTitle: string
+  promptCategory: string
+  originalText: string
+  revisedText: string
+  wordCount: number
+  feedbackNotes: string[]
+}
+
+export interface CustomReadingPassage {
+  id: string
+  title: string
+  language: string
+  level: string
+  content: string
+  createdAt: string
+}
+
 const VOCAB_STORAGE_KEY = 'marginalia_vocabulary'
 const ACTIVITY_STORAGE_KEY = 'marginalia_study_activity'
 const PROFILE_STORAGE_KEY = 'marginalia_learner_profile'
+const JOURNAL_STORAGE_KEY = 'marginalia_writing_journal'
+const CUSTOM_PASSAGE_KEY = 'marginalia_custom_passage'
 
 const EVENT_VOCAB_CHANGED = 'marginalia:vocab-changed'
 const EVENT_ACTIVITY_CHANGED = 'marginalia:activity-changed'
 const EVENT_PROFILE_CHANGED = 'marginalia:profile-changed'
+const EVENT_JOURNAL_CHANGED = 'marginalia:journal-changed'
+const EVENT_CUSTOM_PASSAGE_CHANGED = 'marginalia:custom-passage-changed'
 
 export const DEFAULT_LEARNER_PROFILE: LearnerProfile = {
   name: 'Rani',
@@ -350,6 +375,105 @@ export function updateLearnerProfile(updates: Partial<LearnerProfile>): LearnerP
 }
 
 // ──────────────────────────────────────────
+// Writing Journal Storage
+// ──────────────────────────────────────────
+
+export const DEFAULT_JOURNAL_ENTRIES: JournalEntry[] = [
+  {
+    id: 'journal-entry-1',
+    date: new Date(Date.now() - 2 * 86400000).toISOString(),
+    promptId: 'prompt-14',
+    promptTitle: 'Describe your breakfast using three new words.',
+    promptCategory: 'DAILY LIFE',
+    originalText: '朝はトーストとコーヒーを食べました。それから、いそがしい駅に行きました。',
+    revisedText: '朝はトーストとコーヒーを飲みました。それから、にぎやかな駅に行きました。',
+    wordCount: 35,
+    feedbackNotes: [
+      'Coffee is drunk (飲みました), not eaten.',
+      'A lively station is にぎやかな, whereas いそがしい describes a person.',
+    ],
+  },
+]
+
+export function getStoredJournal(): JournalEntry[] {
+  if (typeof window === 'undefined') return DEFAULT_JOURNAL_ENTRIES
+  try {
+    const raw = window.localStorage.getItem(JOURNAL_STORAGE_KEY)
+    if (!raw) {
+      window.localStorage.setItem(JOURNAL_STORAGE_KEY, JSON.stringify(DEFAULT_JOURNAL_ENTRIES))
+      return DEFAULT_JOURNAL_ENTRIES
+    }
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_JOURNAL_ENTRIES
+  } catch {
+    return DEFAULT_JOURNAL_ENTRIES
+  }
+}
+
+export function saveStoredJournal(entries: JournalEntry[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(JOURNAL_STORAGE_KEY, JSON.stringify(entries))
+    window.dispatchEvent(new CustomEvent(EVENT_JOURNAL_CHANGED, { detail: entries }))
+  } catch (err) {
+    console.error('Failed to save journal to localStorage:', err)
+  }
+}
+
+export function addJournalEntry(
+  entry: Omit<JournalEntry, 'id' | 'date'> & { date?: string },
+): JournalEntry {
+  const current = getStoredJournal()
+  const newEntry: JournalEntry = {
+    ...entry,
+    id: `journal-${Date.now()}`,
+    date: entry.date || new Date().toISOString(),
+  }
+  const updated = [newEntry, ...current]
+  saveStoredJournal(updated)
+  return newEntry
+}
+
+export function deleteJournalEntry(id: string): boolean {
+  const current = getStoredJournal()
+  const filtered = current.filter((item) => item.id !== id)
+  if (filtered.length !== current.length) {
+    saveStoredJournal(filtered)
+    return true
+  }
+  return false
+}
+
+// ──────────────────────────────────────────
+// Custom Reading Passage Storage
+// ──────────────────────────────────────────
+
+export function getStoredCustomPassage(): CustomReadingPassage | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_PASSAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export function saveStoredCustomPassage(passage: CustomReadingPassage | null): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (passage) {
+      window.localStorage.setItem(CUSTOM_PASSAGE_KEY, JSON.stringify(passage))
+    } else {
+      window.localStorage.removeItem(CUSTOM_PASSAGE_KEY)
+    }
+    window.dispatchEvent(new CustomEvent(EVENT_CUSTOM_PASSAGE_CHANGED, { detail: passage }))
+  } catch (err) {
+    console.error('Failed to save custom passage to localStorage:', err)
+  }
+}
+
+// ──────────────────────────────────────────
 // Reactive Hooks
 // ──────────────────────────────────────────
 
@@ -369,6 +493,8 @@ function createSubscription(eventName: string) {
 const subscribeVocab = createSubscription(EVENT_VOCAB_CHANGED)
 const subscribeActivity = createSubscription(EVENT_ACTIVITY_CHANGED)
 const subscribeProfile = createSubscription(EVENT_PROFILE_CHANGED)
+const subscribeJournal = createSubscription(EVENT_JOURNAL_CHANGED)
+const subscribeCustomPassage = createSubscription(EVENT_CUSTOM_PASSAGE_CHANGED)
 
 export function useVocabularyStore(serverWords?: Vocabulary[]) {
   const [mounted, setMounted] = useState(false)
@@ -425,5 +551,39 @@ export function useLearnerProfileStore() {
   return {
     profile: mounted ? profile : DEFAULT_LEARNER_PROFILE,
     updateProfile: updateLearnerProfile,
+  }
+}
+
+export function useJournalStore() {
+  const [mounted, setMounted] = useState(false)
+  const entries = useSyncExternalStore(
+    subscribeJournal,
+    getStoredJournal,
+    () => DEFAULT_JOURNAL_ENTRIES,
+  )
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  return {
+    entries: mounted ? entries : DEFAULT_JOURNAL_ENTRIES,
+    addEntry: addJournalEntry,
+    deleteEntry: deleteJournalEntry,
+  }
+}
+
+export function useCustomPassageStore() {
+  const [mounted, setMounted] = useState(false)
+  const passage = useSyncExternalStore(subscribeCustomPassage, getStoredCustomPassage, () => null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  return {
+    passage: mounted ? passage : null,
+    savePassage: saveStoredCustomPassage,
+    clearPassage: () => saveStoredCustomPassage(null),
   }
 }

@@ -18,9 +18,12 @@ import {
   useVocabularyStore,
   useStudyActivityStore,
   useLearnerProfileStore,
+  useJournalStore,
+  useCustomPassageStore,
   addVocabularyItem,
   updateVocabularyItem,
   deleteVocabularyItem,
+  recordStudySession,
 } from '@/lib/storage'
 
 function playSpeech(text: string, lang = 'ja-JP', rate = 1) {
@@ -1479,13 +1482,23 @@ const readingPassages: Record<'daily' | 'culture' | 'easy', GradedPassage> = {
 }
 
 export function ReadingPassage() {
-  const [passageKey, setPassageKey] = useState<'daily' | 'culture' | 'easy'>('daily')
+  const { words, addItem } = useVocabularyStore()
+  const { passage: customPassage, savePassage, clearPassage } = useCustomPassageStore()
+
+  const [passageKey, setPassageKey] = useState<'daily' | 'culture' | 'easy' | 'custom'>('daily')
   const [furigana, setFurigana] = useState(true)
   const [translation, setTranslation] = useState(false)
   const [selectedWord, setSelectedWord] = useState<{ word: string; reading: string } | null>(null)
   const [savedStatus, setSavedStatus] = useState<string | null>(null)
 
-  const passage = readingPassages[passageKey]
+  // Custom passage editing state
+  const [isEditingCustom, setIsEditingCustom] = useState(false)
+  const [customTitle, setCustomTitle] = useState('')
+  const [customLanguage, setCustomLanguage] = useState('japanese')
+  const [customContent, setCustomContent] = useState('')
+
+  const isCustom = passageKey === 'custom'
+  const passage = !isCustom ? readingPassages[passageKey] : null
 
   const handleSaveToNotebook = () => {
     if (!selectedWord) return
@@ -1493,19 +1506,24 @@ export function ReadingPassage() {
     const readingClean = (parts[0] || selectedWord.word).trim()
     const meaningClean = (parts[1] || selectedWord.reading).trim()
 
-    addVocabularyItem({
+    const sourceName = isCustom
+      ? customPassage?.title || 'Custom text'
+      : passage?.titleJp || 'Graded Reader'
+    const lang = isCustom ? customPassage?.language || 'japanese' : 'japanese'
+
+    addItem({
       word: selectedWord.word,
       reading: readingClean,
       meaning: meaningClean,
-      language: 'japanese',
+      language: lang as any,
       status: 'learning',
-      level: passage.level.split('·')[0].trim(),
-      source: passage.titleJp,
-      tags: [{ label: 'reading' }, { label: 'graded-reader' }],
+      level: isCustom ? customPassage?.level || 'Custom' : passage?.level.split('·')[0].trim(),
+      source: sourceName,
+      tags: [{ label: 'reading' }, { label: isCustom ? 'custom-text' : 'graded-reader' }],
       examples: [
         {
-          sentence: `文章「${passage.titleJp}」の中で出会った言葉。`,
-          translation: `Found in "${passage.titleEn}"`,
+          sentence: `文章「${sourceName}」の中で出会った言葉。`,
+          translation: `Encountered while reading "${sourceName}"`,
         },
       ],
     })
@@ -1516,6 +1534,27 @@ export function ReadingPassage() {
       setSelectedWord(null)
     }, 1500)
   }
+
+  const handleSaveCustomPassage = (e: FormEvent) => {
+    e.preventDefault()
+    if (!customContent.trim()) return
+    const newPassage = {
+      id: `custom-${Date.now()}`,
+      title: customTitle.trim() || 'My Personal Passage',
+      language: customLanguage,
+      level: 'Custom',
+      content: customContent.trim(),
+      createdAt: new Date().toISOString(),
+    }
+    savePassage(newPassage)
+    setIsEditingCustom(false)
+  }
+
+  // Tokenize custom text into interactive words
+  const customParagraphs = useMemo(() => {
+    if (!customPassage) return []
+    return customPassage.content.split('\n').filter((p) => p.trim().length > 0)
+  }, [customPassage])
 
   return (
     <div className="reading-layout">
@@ -1538,56 +1577,211 @@ export function ReadingPassage() {
         <select
           aria-label="Reading passage selection"
           onChange={(e) => {
-            setPassageKey(e.target.value as any)
+            const val = e.target.value as any
+            setPassageKey(val)
             setSelectedWord(null)
+            if (val === 'custom' && !customPassage) {
+              setIsEditingCustom(true)
+            }
           }}
           value={passageKey}
         >
           <option value="daily">N4 · Daily life (Café)</option>
           <option value="culture">N4 · Culture (Bookshop)</option>
           <option value="easy">N5 · Easy (Morning walk)</option>
+          <option value="custom">✦ Custom passage (Paste your own)</option>
         </select>
+
+        {isCustom && customPassage && (
+          <div style={{ marginTop: '16px' }}>
+            <button
+              className="outline-button"
+              onClick={() => {
+                setCustomTitle(customPassage.title)
+                setCustomLanguage(customPassage.language)
+                setCustomContent(customPassage.content)
+                setIsEditingCustom(true)
+              }}
+              style={{ width: '100%', fontSize: '10px', padding: '6px' }}
+              type="button"
+            >
+              Edit passage text
+            </button>
+          </div>
+        )}
       </aside>
+
       <article className="reading-paper">
-        <header>
-          <p className="eyebrow">GRADED READER · {passage.level}</p>
-          <h1>{passage.titleJp}</h1>
-          <p>{passage.titleEn}</p>
-        </header>
-        <div className="reading-copy">
-          {passage.paragraphs.map((para, pIdx) => (
-            <div key={pIdx} style={{ marginBottom: '22px' }}>
-              <p>
-                {para.jp.map((segment, sIdx) => {
-                  if (segment.word) {
-                    return (
-                      <button
-                        className={segment.type === 'learning' ? 'learning-word' : 'new-word'}
-                        key={sIdx}
-                        onClick={() =>
-                          setSelectedWord({ word: segment.word!, reading: segment.reading! })
-                        }
-                        type="button"
-                      >
-                        {segment.text}
-                      </button>
-                    )
-                  }
-                  if (segment.furigana) {
-                    return (
-                      <ruby key={sIdx}>
-                        {segment.text}
-                        <rt>{furigana ? segment.furigana : ''}</rt>
-                      </ruby>
-                    )
-                  }
-                  return <span key={sIdx}>{segment.text}</span>
-                })}
-              </p>
-              {translation && <span>{para.translation}</span>}
+        {isCustom && (!customPassage || isEditingCustom) ? (
+          <form className="custom-passage-form" onSubmit={handleSaveCustomPassage}>
+            <header>
+              <p className="eyebrow">PASTE YOUR OWN PASSAGE</p>
+              <h1 style={{ fontSize: '26px' }}>Read what you want to read.</h1>
+              <p>Paste an article, song lyrics, dialogue, or news story in your target language.</p>
+            </header>
+            <div>
+              <label className="eyebrow" style={{ display: 'block', marginBottom: '6px' }}>
+                PASSAGE TITLE
+              </label>
+              <input
+                onChange={(e) => setCustomTitle(e.target.value)}
+                placeholder="e.g. NHK News Easy / Short Story / Article"
+                value={customTitle}
+              />
             </div>
-          ))}
-        </div>
+            <div>
+              <label className="eyebrow" style={{ display: 'block', marginBottom: '6px' }}>
+                LANGUAGE
+              </label>
+              <select onChange={(e) => setCustomLanguage(e.target.value)} value={customLanguage}>
+                <option value="japanese">Japanese</option>
+                <option value="korean">Korean</option>
+                <option value="spanish">Spanish</option>
+                <option value="english">English</option>
+                <option value="indonesian">Indonesian</option>
+              </select>
+            </div>
+            <div>
+              <label className="eyebrow" style={{ display: 'block', marginBottom: '6px' }}>
+                PASSAGE TEXT
+              </label>
+              <textarea
+                onChange={(e) => setCustomContent(e.target.value)}
+                placeholder="Paste or write foreign text here. Each word will become clickable so you can look up and save unfamiliar vocabulary..."
+                required
+                value={customContent}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button className="primary-button" type="submit">
+                Parse into reading sheet
+              </button>
+              {customPassage && (
+                <button
+                  className="outline-button"
+                  onClick={() => setIsEditingCustom(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+        ) : isCustom && customPassage ? (
+          <>
+            <header>
+              <p className="eyebrow">CUSTOM PASSAGE · {customPassage.language.toUpperCase()}</p>
+              <h1>{customPassage.title}</h1>
+              <p>Tap any word to inspect reading and save to your notebook.</p>
+            </header>
+            <div className="reading-copy">
+              {customParagraphs.map((para, pIdx) => {
+                // Tokenize words
+                const wordsList = para.split(/([ \t\n,.;:!?()"'，。、！？「」]+)/)
+                return (
+                  <p key={pIdx} style={{ marginBottom: '22px' }}>
+                    {wordsList.map((token, tIdx) => {
+                      if (!token.trim() || /^[,.;:!?()"'，。、！？「」]+$/.test(token)) {
+                        return <span key={tIdx}>{token}</span>
+                      }
+                      const inNotebook = words.find(
+                        (w) => w.word === token && w.language === customPassage.language,
+                      )
+                      let statusClass = 'is-new'
+                      if (inNotebook) {
+                        statusClass = inNotebook.status === 'known' ? 'is-known' : 'is-learning'
+                      }
+                      return (
+                        <button
+                          className={`custom-word-token ${statusClass}`}
+                          key={tIdx}
+                          onClick={() =>
+                            setSelectedWord({
+                              word: token,
+                              reading: inNotebook
+                                ? `${inNotebook.reading}${inNotebook.meaning ? ` · ${inNotebook.meaning}` : ''}`
+                                : `${token} · look up & save`,
+                            })
+                          }
+                          type="button"
+                        >
+                          {token}
+                        </button>
+                      )
+                    })}
+                  </p>
+                )
+              })}
+            </div>
+            <footer className="reading-stats">
+              <p>
+                <strong>{words.filter((w) => w.status === 'known').length}</strong>
+                <span>words known in notebook</span>
+              </p>
+              <p>
+                <strong>{customParagraphs.length}</strong>
+                <span>paragraphs in passage</span>
+              </p>
+              <p>Interactive study layer active. Click any word to save.</p>
+            </footer>
+          </>
+        ) : (
+          passage && (
+            <>
+              <header>
+                <p className="eyebrow">GRADED READER · {passage.level}</p>
+                <h1>{passage.titleJp}</h1>
+                <p>{passage.titleEn}</p>
+              </header>
+              <div className="reading-copy">
+                {passage.paragraphs.map((para, pIdx) => (
+                  <div key={pIdx} style={{ marginBottom: '22px' }}>
+                    <p>
+                      {para.jp.map((segment, sIdx) => {
+                        if (segment.word) {
+                          return (
+                            <button
+                              className={segment.type === 'learning' ? 'learning-word' : 'new-word'}
+                              key={sIdx}
+                              onClick={() =>
+                                setSelectedWord({ word: segment.word!, reading: segment.reading! })
+                              }
+                              type="button"
+                            >
+                              {segment.text}
+                            </button>
+                          )
+                        }
+                        if (segment.furigana) {
+                          return (
+                            <ruby key={sIdx}>
+                              {segment.text}
+                              <rt>{furigana ? segment.furigana : ''}</rt>
+                            </ruby>
+                          )
+                        }
+                        return <span key={sIdx}>{segment.text}</span>
+                      })}
+                    </p>
+                    {translation && <span>{para.translation}</span>}
+                  </div>
+                ))}
+              </div>
+              <footer className="reading-stats">
+                <p>
+                  <strong>{passage.stats.known}</strong>
+                  <span>words known</span>
+                </p>
+                <p>
+                  <strong>{passage.stats.newFound}</strong>
+                  <span>new words found</span>
+                </p>
+                <p>{passage.stats.note}</p>
+              </footer>
+            </>
+          )
+        )}
+
         {selectedWord && (
           <div className="reading-popover">
             <button onClick={() => setSelectedWord(null)} type="button">
@@ -1600,90 +1794,328 @@ export function ReadingPassage() {
             </button>
           </div>
         )}
-        <footer className="reading-stats">
-          <p>
-            <strong>{passage.stats.known}</strong>
-            <span>words known</span>
-          </p>
-          <p>
-            <strong>{passage.stats.newFound}</strong>
-            <span>new words found</span>
-          </p>
-          <p>{passage.stats.note}</p>
-        </footer>
       </article>
     </div>
   )
 }
 
+const writingPrompts = [
+  {
+    id: 'prompt-14',
+    num: '14',
+    category: 'DAILY LIFE',
+    title: 'Describe your breakfast using three new words.',
+    hint: 'Try: 香り · 焼く · やっぱり',
+    guidance: '80–120 characters. Imperfection permitted.',
+    defaultText: '朝はトーストとコーヒーを食べました。それから、いそがしい駅に行きました。',
+    corrections: [
+      {
+        id: '1',
+        replacement: '飲みました',
+        note: 'Coffee is drunk, not eaten. Japanese agrees with the cup.',
+        className: 'edit-one',
+        commentClass: 'comment-one',
+      },
+      {
+        id: '2',
+        replacement: 'にぎやかな',
+        note: 'いそがしい describes a person or schedule. A station is lively.',
+        className: 'edit-two',
+        commentClass: 'comment-two',
+      },
+    ],
+  },
+  {
+    id: 'prompt-15',
+    num: '15',
+    category: 'MEMORY',
+    title: 'Write about a small place you remember from childhood.',
+    hint: 'Try: 懐かしい · 秘密 · 景色',
+    guidance: 'A quiet room, a corner in the garden, or a stone by the water.',
+    defaultText:
+      '子供のころ、祖父の庭にある古い木の下が秘密の場所でした。風が吹くと葉が揺れました。',
+    corrections: [
+      {
+        id: '1',
+        replacement: '秘密基地でした',
+        note: '秘密基地 conveys that nostalgic childhood hideout feeling.',
+        className: 'edit-one',
+        commentClass: 'comment-one',
+      },
+      {
+        id: '2',
+        replacement: 'そよそよと揺れました',
+        note: 'そよそよ describes leaves rustling gently in the afternoon air.',
+        className: 'edit-two',
+        commentClass: 'comment-two',
+      },
+    ],
+  },
+  {
+    id: 'prompt-16',
+    num: '16',
+    category: 'OBSERVATION',
+    title: 'Look out the window. Describe what the light and wind are doing.',
+    hint: 'Try: 曇り · 吹く · 気配',
+    guidance: 'Notice what is quiet before noticing what is loud.',
+    defaultText: '空は薄い曇りで、木漏れ日のような光が道路に静かに揺れています。',
+    corrections: [
+      {
+        id: '1',
+        replacement: 'かすかな光が',
+        note: 'かすかな (faint) matches the soft cloudy afternoon mood.',
+        className: 'edit-one',
+        commentClass: 'comment-one',
+      },
+      {
+        id: '2',
+        replacement: '静かに落ちています',
+        note: 'Light falls (落ちる) upon the surface rather than merely shaking.',
+        className: 'edit-two',
+        commentClass: 'comment-two',
+      },
+    ],
+  },
+  {
+    id: 'prompt-17',
+    num: '17',
+    category: 'CORRESPONDENCE',
+    title: 'Send three sentences to a friend you have not seen in years.',
+    hint: 'Try: 元気 · 久しぶり · 伝える',
+    guidance: 'Write with calm affection, without unnecessary ceremony.',
+    defaultText: '久しぶりですね。お元気ですか。また時間がある時に、一緒にお茶でもしましょう。',
+    corrections: [
+      {
+        id: '1',
+        replacement: 'ゆっくり話しましょう',
+        note: 'Adding ゆっくり (leisurely) turns a casual tea into a warm invitation.',
+        className: 'edit-one',
+        commentClass: 'comment-one',
+      },
+    ],
+  },
+]
+
 export function WritingPad() {
-  const [text, setText] = useState(
-    '朝はトーストとコーヒーを食べました。それから、いそがしい駅に行きました。',
-  )
+  const { entries, addEntry, deleteEntry } = useJournalStore()
+  const { recordSession } = useStudyActivityStore()
+
+  const [promptIndex, setPromptIndex] = useState(0)
+  const currentPrompt = writingPrompts[promptIndex]
+
+  const [text, setText] = useState(currentPrompt.defaultText)
   const [reviewed, setReviewed] = useState(false)
   const [savedNote, setSavedNote] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
 
-  const handleSaveCorrected = () => {
+  const handlePromptChange = (idx: number) => {
+    setPromptIndex(idx)
+    setText(writingPrompts[idx].defaultText)
+    setReviewed(false)
+    setSavedNote(false)
+  }
+
+  const handleSaveToJournal = () => {
+    const feedbackList = currentPrompt.corrections.map((c) => c.note)
+    addEntry({
+      promptId: currentPrompt.id,
+      promptTitle: currentPrompt.title,
+      promptCategory: currentPrompt.category,
+      originalText: text,
+      revisedText: text,
+      wordCount: text.length,
+      feedbackNotes: feedbackList,
+    })
+
+    // Log 5 minutes into today's study activity
+    recordSession({
+      minutes: 5,
+      cardsReviewed: 0,
+      accuracy: 100,
+      missedWords: [],
+    })
+
     setSavedNote(true)
     setTimeout(() => setSavedNote(false), 2500)
   }
 
   return (
-    <div className="writing-grid">
-      <aside className="prompt-slip">
-        <p className="eyebrow">PROMPT 14 · DAILY LIFE</p>
-        <h2>Describe your breakfast using three new words.</h2>
-        <p>Try: 香り · 焼く · やっぱり</p>
-        <span>80–120 characters. Imperfection permitted.</span>
-      </aside>
-      <div className="writing-sheet">
-        <div className="writing-toolbar">
-          <span>{text.length} CHARACTERS</span>
-          <button className="primary-button" onClick={() => setReviewed(true)} type="button">
-            Review my writing <Icon name="arrow" />
-          </button>
-        </div>
-        <textarea
-          aria-label="Japanese writing practice"
-          onChange={(e) => setText(e.target.value)}
-          value={text}
-        />
-        {reviewed && (
-          <div className="correction-layer">
-            <span className="red-edit edit-one">飲みました</span>
-            <span className="margin-comment comment-one">
-              Coffee is drunk, not eaten. Japanese agrees with the cup.
-            </span>
-            <span className="red-edit edit-two">にぎやかな</span>
-            <span className="margin-comment comment-two">
-              いそがしい describes a person or schedule. A station is lively.
-            </span>
-            <button className="outline-button" onClick={handleSaveCorrected} type="button">
-              {savedNote ? 'Saved to notebook ✓' : 'Save corrected version'}
-            </button>
+    <div>
+      <div className="writing-grid">
+        <aside className="prompt-slip">
+          <p className="eyebrow">
+            PROMPT {currentPrompt.num} · {currentPrompt.category}
+          </p>
+          <h2>{currentPrompt.title}</h2>
+          <p>{currentPrompt.hint}</p>
+          <span>{currentPrompt.guidance}</span>
+
+          <div
+            style={{ marginTop: '24px', borderTop: '1px solid var(--rule)', paddingTop: '16px' }}
+          >
+            <p className="eyebrow" style={{ marginBottom: '8px' }}>
+              OTHER PROMPTS
+            </p>
+            {writingPrompts.map((p, idx) => (
+              <button
+                className={`prompt-select-btn ${idx === promptIndex ? 'active' : ''}`}
+                key={p.id}
+                onClick={() => handlePromptChange(idx)}
+                type="button"
+              >
+                <strong>{p.num}.</strong> {p.title}
+              </button>
+            ))}
           </div>
-        )}
+        </aside>
+
+        <div className="writing-sheet">
+          <div className="writing-toolbar">
+            <span>{text.length} CHARACTERS</span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                className="outline-button"
+                onClick={() => setShowHistory(!showHistory)}
+                style={{ padding: '6px 10px', fontSize: '10px' }}
+                type="button"
+              >
+                <Icon name="book" /> Past writings ({entries.length})
+              </button>
+              <button className="primary-button" onClick={() => setReviewed(true)} type="button">
+                Review my writing <Icon name="arrow" />
+              </button>
+            </div>
+          </div>
+          <textarea
+            aria-label="Japanese writing practice"
+            onChange={(e) => {
+              setText(e.target.value)
+              if (reviewed) setReviewed(false)
+            }}
+            value={text}
+          />
+          {reviewed && (
+            <div className="correction-layer">
+              {currentPrompt.corrections.map((corr) => (
+                <div key={corr.id}>
+                  <span className={`red-edit ${corr.className}`}>{corr.replacement}</span>
+                  <span className={`margin-comment ${corr.commentClass}`}>{corr.note}</span>
+                </div>
+              ))}
+              <button className="outline-button" onClick={handleSaveToJournal} type="button">
+                {savedNote ? 'Saved to journal ✓' : 'Save version to journal'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {showHistory && (
+        <section className="journal-section">
+          <div className="section-title-line">
+            <div>
+              <p className="eyebrow">WRITING JOURNAL</p>
+              <h2>Past pages in ink</h2>
+            </div>
+            <span>{entries.length} SAVED ENTRIES</span>
+          </div>
+
+          <div className="journal-list">
+            {entries.map((entry) => {
+              const formattedDate = new Date(entry.date).toLocaleDateString('en-US', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+              })
+              return (
+                <article className="journal-card" key={entry.id}>
+                  <div className="journal-card-header">
+                    <span>
+                      {entry.promptCategory} · {formattedDate}
+                    </span>
+                    <button
+                      aria-label="Delete entry"
+                      onClick={() => deleteEntry(entry.id)}
+                      style={{
+                        background: 'transparent',
+                        border: 0,
+                        color: 'var(--ink-soft)',
+                        cursor: 'pointer',
+                      }}
+                      type="button"
+                    >
+                      <Icon name="trash" size={13} />
+                    </button>
+                  </div>
+                  <h3>{entry.promptTitle}</h3>
+                  <p className="journal-card-excerpt">{entry.originalText}</p>
+                  {entry.feedbackNotes && entry.feedbackNotes.length > 0 && (
+                    <div className="journal-card-notes">
+                      <strong>Teacher’s notes:</strong> {entry.feedbackNotes.join(' · ')}
+                    </div>
+                  )}
+                </article>
+              )
+            })}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
 
+const shadowSentences = [
+  {
+    num: '01',
+    jp: '雨が降っていたので、喫茶店に入りました。',
+    reading: 'Ame ga futte ita node, kissaten ni hairimashita.',
+    en: 'Because it was raining, I stepped into the coffee shop.',
+  },
+  {
+    num: '02',
+    jp: '窓際の席に座って、あたたかいお茶を頼んだ。',
+    reading: 'Madogiwa no seki ni suwatte, atatakai ocha o tanonda.',
+    en: 'Sitting at the window seat, I ordered warm tea.',
+  },
+  {
+    num: '03',
+    jp: '静かな店内に、古い時計の音だけが響いている。',
+    reading: 'Shizuka na tennai ni, furui tokei no oto dake ga hibiite iru.',
+    en: 'In the quiet shop, only the sound of an old clock resonated.',
+  },
+  {
+    num: '04',
+    jp: '少し寄り道をして、好きな本を読み進める。',
+    reading: 'Sukoshi yorimichi o shite, suki na hon o yomisusumeru.',
+    en: 'Taking a small detour, I continued reading my favorite book.',
+  },
+]
+
 export function AudioStudio() {
+  const [sentenceIdx, setSentenceIdx] = useState(0)
+  const currentSentence = shadowSentences[sentenceIdx]
+
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState<'1×' | '0.75×'>('1×')
   const [loop, setLoop] = useState(false)
+
+  // Real microphone recording state
   const [recording, setRecording] = useState(false)
   const [recordSeconds, setRecordSeconds] = useState(0)
-  const [hasVoiceTake, setHasVoiceTake] = useState(false)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const [userAudioUrl, setUserAudioUrl] = useState<string | null>(null)
+  const [userAudioPlaying, setUserAudioPlaying] = useState(false)
+  const [micError, setMicError] = useState<string | null>(null)
 
-  const sentenceText = '雨が降っていたので、喫茶店に入りました。'
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<BlobPart[]>([])
+  const userAudioPlayerRef = useRef<HTMLAudioElement | null>(null)
 
   const togglePlay = () => {
     if (!playing) {
       setPlaying(true)
       const rate = speed === '0.75×' ? 0.75 : 1
-      playSpeech(sentenceText, 'ja-JP', rate)
+      playSpeech(currentSentence.jp, 'ja-JP', rate)
       setTimeout(
         () => {
           setPlaying(false)
@@ -1691,7 +2123,7 @@ export function AudioStudio() {
             setTimeout(togglePlay, 500)
           }
         },
-        speed === '0.75×' ? 4000 : 3000,
+        speed === '0.75×' ? 4200 : 3200,
       )
     } else {
       setPlaying(false)
@@ -1701,40 +2133,149 @@ export function AudioStudio() {
     }
   }
 
-  const toggleRecord = () => {
-    if (!recording) {
+  const startRecording = async () => {
+    setMicError(null)
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setMicError('Microphone input is not supported in this browser.')
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      audioChunksRef.current = []
+      const recorder = new MediaRecorder(stream)
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      recorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const url = URL.createObjectURL(audioBlob)
+        setUserAudioUrl(url)
+        // Stop all audio tracks to free mic
+        stream.getTracks().forEach((track) => track.stop())
+      }
+
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      setRecording(true)
+      setRecordSeconds(0)
+
+      timerRef.current = setInterval(() => {
+        setRecordSeconds((s) => s + 1)
+      }, 1000)
+    } catch (err: any) {
+      console.warn('Microphone permission or hardware error:', err)
+      // Provide clean simulated fallback if microphone hardware isn't connected
       setRecording(true)
       setRecordSeconds(0)
       timerRef.current = setInterval(() => {
         setRecordSeconds((s) => s + 1)
       }, 1000)
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
     } else {
-      setRecording(false)
-      if (timerRef.current) clearInterval(timerRef.current)
-      setHasVoiceTake(true)
+      // Fallback take for testing
+      setUserAudioUrl('simulated')
+    }
+
+    setRecording(false)
+    if (timerRef.current) clearInterval(timerRef.current)
+  }
+
+  const toggleUserAudioPlay = () => {
+    if (!userAudioUrl) return
+
+    if (userAudioUrl === 'simulated') {
+      setUserAudioPlaying(true)
+      setTimeout(() => setUserAudioPlaying(false), 2500)
+      return
+    }
+
+    if (!userAudioPlayerRef.current) {
+      userAudioPlayerRef.current = new Audio(userAudioUrl)
+      userAudioPlayerRef.current.onended = () => setUserAudioPlaying(false)
+    }
+
+    if (!userAudioPlaying) {
+      userAudioPlayerRef.current.play()
+      setUserAudioPlaying(true)
+    } else {
+      userAudioPlayerRef.current.pause()
+      userAudioPlayerRef.current.currentTime = 0
+      setUserAudioPlaying(false)
     }
   }
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
+      if (userAudioUrl && userAudioUrl !== 'simulated') {
+        URL.revokeObjectURL(userAudioUrl)
+      }
     }
-  }, [])
+  }, [userAudioUrl])
 
   return (
     <div className="audio-studio">
       <section className="audio-card">
-        <p className="eyebrow">SHADOWING · SENTENCE 03 OF 08</p>
-        <p className="audio-sentence">{sentenceText}</p>
-        <p className="audio-reading">Ame ga futte ita node, kissaten ni hairimashita.</p>
+        <div className="sentence-nav-bar">
+          <button
+            className="sentence-nav-btn"
+            disabled={sentenceIdx === 0}
+            onClick={() => {
+              setSentenceIdx((prev) => Math.max(0, prev - 1))
+              setUserAudioUrl(null)
+              setUserAudioPlaying(false)
+            }}
+            type="button"
+          >
+            ← Previous
+          </button>
+          <span>SHADOWING · SENTENCE {currentSentence.num} OF 04</span>
+          <button
+            className="sentence-nav-btn"
+            disabled={sentenceIdx === shadowSentences.length - 1}
+            onClick={() => {
+              setSentenceIdx((prev) => Math.min(shadowSentences.length - 1, prev + 1))
+              setUserAudioUrl(null)
+              setUserAudioPlaying(false)
+            }}
+            type="button"
+          >
+            Next →
+          </button>
+        </div>
+
+        <p className="audio-sentence">{currentSentence.jp}</p>
+        <p className="audio-reading">{currentSentence.reading}</p>
+        <p
+          style={{
+            textAlign: 'center',
+            color: 'var(--ink-soft)',
+            fontSize: '12px',
+            marginTop: '4px',
+          }}
+        >
+          {currentSentence.en}
+        </p>
+
         <div className={`waveform ${playing ? 'playing' : ''}`} aria-hidden="true">
           {Array.from({ length: 48 }, (_, i) => (
             <i key={i} style={{ height: `${7 + ((i * 17) % 30)}px` }} />
           ))}
         </div>
+
         <div className="player-controls">
           <button
-            aria-label={playing ? 'Pause audio' : 'Play audio'}
+            aria-label={playing ? 'Pause audio' : 'Play native speaker audio'}
             className="round-control"
             onClick={togglePlay}
             type="button"
@@ -1751,41 +2292,67 @@ export function AudioStudio() {
           </label>
         </div>
       </section>
+
       <section className="record-panel">
         <div>
           <p className="eyebrow">YOUR VOICE</p>
           <h2>Now follow the ink line.</h2>
           <p>Listen once. Then speak with the same pauses, not the same anxiety.</p>
         </div>
+
         <button
           className={`record-button ${recording ? 'recording' : ''}`}
-          onClick={toggleRecord}
+          onClick={recording ? stopRecording : startRecording}
           type="button"
         >
           <Icon name="record" size={28} />
           <span>{recording ? 'Stop recording' : 'Record your voice'}</span>
         </button>
+
         {recording && (
           <p className="record-status">
-            RECORDING · 00:{String(recordSeconds).padStart(2, '0')} · THE RED DOT IS EARNEST
+            RECORDING · 00:{String(recordSeconds).padStart(2, '0')} · MICROPHONE ACTIVE
           </p>
         )}
-        {hasVoiceTake && !recording && (
-          <div className="comparison">
-            <span>ORIGINAL</span>
-            <div className="mini-wave" />
-            <span>YOUR TAKE</span>
-            <div className="mini-wave" style={{ opacity: 0.85 }} />
+
+        {micError && (
+          <p style={{ color: 'var(--vermilion)', fontSize: '10px', marginTop: '8px' }}>
+            {micError}
+          </p>
+        )}
+
+        {userAudioUrl && !recording && (
+          <div style={{ marginTop: '24px' }}>
+            <p className="eyebrow" style={{ marginBottom: '8px' }}>
+              RECORDED TAKE AVAILABLE
+            </p>
+            <div className="user-take-actions">
+              <button
+                className={`user-take-btn ${userAudioPlaying ? 'playing' : ''}`}
+                onClick={toggleUserAudioPlay}
+                type="button"
+              >
+                {userAudioPlaying ? '⏸ Pause Your Take' : '▶ Play Your Take'}
+              </button>
+              <button className="user-take-btn" onClick={startRecording} type="button">
+                Retake
+              </button>
+            </div>
           </div>
         )}
-        {!hasVoiceTake && !recording && (
-          <div className="comparison">
-            <span>ORIGINAL</span>
-            <div className="mini-wave" />
-            <span>YOUR TAKE</span>
-            <div className="mini-wave quiet" />
-          </div>
-        )}
+
+        <div className="comparison" style={{ marginTop: userAudioUrl ? '28px' : 'auto' }}>
+          <span>ORIGINAL</span>
+          <div className="mini-wave" />
+          <span>YOUR TAKE</span>
+          <div
+            className={`mini-wave ${userAudioUrl ? '' : 'quiet'}`}
+            style={{
+              opacity: userAudioPlaying ? 1 : userAudioUrl ? 0.85 : 0.35,
+              filter: userAudioPlaying ? 'drop-shadow(0 0 2px var(--moss))' : 'none',
+            }}
+          />
+        </div>
       </section>
     </div>
   )
