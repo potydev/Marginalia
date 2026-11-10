@@ -20,9 +20,15 @@ export function PageHeader({
         <MarginNote>{note}</MarginNote>
       </aside>
       <div className="page-heading-copy">
-        <p className="eyebrow">{eyebrow}</p>
+        <p className="eyebrow" suppressHydrationWarning>
+          {eyebrow}
+        </p>
         <h1>{title}</h1>
-        {description && <p className="page-dek">{description}</p>}
+        {description && (
+          <p className="page-dek" suppressHydrationWarning>
+            {description}
+          </p>
+        )}
       </div>
     </header>
   )

@@ -7,6 +7,9 @@ export { fallbackVocabulary }
 
 const readVocabulary = unstable_cache(
   async (): Promise<Vocabulary[]> => {
+    if (!process.env.FIGMA_EID) {
+      return fallbackVocabulary
+    }
     try {
       const payload = await getPayloadClient()
       const result = await payload.find({

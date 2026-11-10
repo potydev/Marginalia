@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 import type { Vocabulary } from '@/payload-types'
 import { fallbackVocabulary } from './default-vocabulary'
 
 export interface StoredVocabularyItem extends Vocabulary {
-  srsInterval?: number // Interval in days (e.g. 0.01 for 10 min, 1 for 1 day, 3 for 3 days, 7 for 7 days)
+  srsInterval?: number
   srsRepetitions?: number
   lastReviewed?: string
   nextReview?: string
@@ -112,29 +112,64 @@ export const DEFAULT_STUDY_ACTIVITY: StudyActivity = {
   ],
 }
 
+export const DEFAULT_JOURNAL_ENTRIES: JournalEntry[] = [
+  {
+    id: 'journal-entry-1',
+    date: new Date(Date.now() - 2 * 86400000).toISOString(),
+    promptId: 'prompt-14',
+    promptTitle: 'Describe your breakfast using three new words.',
+    promptCategory: 'DAILY LIFE',
+    originalText: '朝はトーストとコーヒーを食べました。それから、いそがしい駅に行きました。',
+    revisedText: '朝はトーストとコーヒーを飲みました。それから、にぎやかな駅に行きました。',
+    wordCount: 35,
+    feedbackNotes: [
+      'Coffee is drunk (飲みました), not eaten.',
+      'A lively station is にぎやかな, whereas いそがしい describes a person.',
+    ],
+  },
+]
+
+// ──────────────────────────────────────────
+// In-Memory Cache for Referential Stability
+// (Prevents Maximum update depth exceeded in useSyncExternalStore)
+// ──────────────────────────────────────────
+
+let cachedVocab: StoredVocabularyItem[] | null = null
+let cachedActivity: StudyActivity | null = null
+let cachedProfile: LearnerProfile | null = null
+let cachedJournal: JournalEntry[] | null = null
+let cachedCustomPassage: CustomReadingPassage | null = null
+let customPassageLoaded = false
+
 // ──────────────────────────────────────────
 // Vocabulary Storage
 // ──────────────────────────────────────────
 
 export function getStoredVocabulary(): StoredVocabularyItem[] {
   if (typeof window === 'undefined') return fallbackVocabulary as StoredVocabularyItem[]
+  if (cachedVocab) return cachedVocab
   try {
     const raw = window.localStorage.getItem(VOCAB_STORAGE_KEY)
     if (!raw) {
       window.localStorage.setItem(VOCAB_STORAGE_KEY, JSON.stringify(fallbackVocabulary))
-      return fallbackVocabulary as StoredVocabularyItem[]
+      cachedVocab = fallbackVocabulary as StoredVocabularyItem[]
+      return cachedVocab
     }
     const parsed = JSON.parse(raw)
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed
+      cachedVocab = parsed
+      return cachedVocab
     }
-    return fallbackVocabulary as StoredVocabularyItem[]
+    cachedVocab = fallbackVocabulary as StoredVocabularyItem[]
+    return cachedVocab
   } catch {
-    return fallbackVocabulary as StoredVocabularyItem[]
+    cachedVocab = fallbackVocabulary as StoredVocabularyItem[]
+    return cachedVocab
   }
 }
 
 export function saveStoredVocabulary(words: StoredVocabularyItem[]): void {
+  cachedVocab = words
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(VOCAB_STORAGE_KEY, JSON.stringify(words))
@@ -266,20 +301,26 @@ export function resetVocabularyToDefault(): StoredVocabularyItem[] {
 
 export function getStoredStudyActivity(): StudyActivity {
   if (typeof window === 'undefined') return DEFAULT_STUDY_ACTIVITY
+  if (cachedActivity) return cachedActivity
   try {
     const raw = window.localStorage.getItem(ACTIVITY_STORAGE_KEY)
     if (!raw) {
       window.localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(DEFAULT_STUDY_ACTIVITY))
+      cachedActivity = DEFAULT_STUDY_ACTIVITY
       return DEFAULT_STUDY_ACTIVITY
     }
     const parsed = JSON.parse(raw)
-    return { ...DEFAULT_STUDY_ACTIVITY, ...parsed }
+    const result: StudyActivity = { ...DEFAULT_STUDY_ACTIVITY, ...parsed }
+    cachedActivity = result
+    return result
   } catch {
+    cachedActivity = DEFAULT_STUDY_ACTIVITY
     return DEFAULT_STUDY_ACTIVITY
   }
 }
 
 export function saveStoredStudyActivity(activity: StudyActivity): void {
+  cachedActivity = activity
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(activity))
@@ -344,20 +385,26 @@ export function recordStudySession({
 
 export function getStoredLearnerProfile(): LearnerProfile {
   if (typeof window === 'undefined') return DEFAULT_LEARNER_PROFILE
+  if (cachedProfile) return cachedProfile
   try {
     const raw = window.localStorage.getItem(PROFILE_STORAGE_KEY)
     if (!raw) {
       window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(DEFAULT_LEARNER_PROFILE))
+      cachedProfile = DEFAULT_LEARNER_PROFILE
       return DEFAULT_LEARNER_PROFILE
     }
     const parsed = JSON.parse(raw)
-    return { ...DEFAULT_LEARNER_PROFILE, ...parsed }
+    const result: LearnerProfile = { ...DEFAULT_LEARNER_PROFILE, ...parsed }
+    cachedProfile = result
+    return result
   } catch {
+    cachedProfile = DEFAULT_LEARNER_PROFILE
     return DEFAULT_LEARNER_PROFILE
   }
 }
 
 export function saveStoredLearnerProfile(profile: LearnerProfile): void {
+  cachedProfile = profile
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile))
@@ -378,39 +425,27 @@ export function updateLearnerProfile(updates: Partial<LearnerProfile>): LearnerP
 // Writing Journal Storage
 // ──────────────────────────────────────────
 
-export const DEFAULT_JOURNAL_ENTRIES: JournalEntry[] = [
-  {
-    id: 'journal-entry-1',
-    date: new Date(Date.now() - 2 * 86400000).toISOString(),
-    promptId: 'prompt-14',
-    promptTitle: 'Describe your breakfast using three new words.',
-    promptCategory: 'DAILY LIFE',
-    originalText: '朝はトーストとコーヒーを食べました。それから、いそがしい駅に行きました。',
-    revisedText: '朝はトーストとコーヒーを飲みました。それから、にぎやかな駅に行きました。',
-    wordCount: 35,
-    feedbackNotes: [
-      'Coffee is drunk (飲みました), not eaten.',
-      'A lively station is にぎやかな, whereas いそがしい describes a person.',
-    ],
-  },
-]
-
 export function getStoredJournal(): JournalEntry[] {
   if (typeof window === 'undefined') return DEFAULT_JOURNAL_ENTRIES
+  if (cachedJournal) return cachedJournal
   try {
     const raw = window.localStorage.getItem(JOURNAL_STORAGE_KEY)
     if (!raw) {
       window.localStorage.setItem(JOURNAL_STORAGE_KEY, JSON.stringify(DEFAULT_JOURNAL_ENTRIES))
-      return DEFAULT_JOURNAL_ENTRIES
+      cachedJournal = DEFAULT_JOURNAL_ENTRIES
+      return cachedJournal
     }
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_JOURNAL_ENTRIES
+    cachedJournal = Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_JOURNAL_ENTRIES
+    return cachedJournal
   } catch {
-    return DEFAULT_JOURNAL_ENTRIES
+    cachedJournal = DEFAULT_JOURNAL_ENTRIES
+    return cachedJournal
   }
 }
 
 export function saveStoredJournal(entries: JournalEntry[]): void {
+  cachedJournal = entries
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(JOURNAL_STORAGE_KEY, JSON.stringify(entries))
@@ -450,16 +485,26 @@ export function deleteJournalEntry(id: string): boolean {
 
 export function getStoredCustomPassage(): CustomReadingPassage | null {
   if (typeof window === 'undefined') return null
+  if (customPassageLoaded) return cachedCustomPassage
   try {
     const raw = window.localStorage.getItem(CUSTOM_PASSAGE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw)
+    customPassageLoaded = true
+    if (!raw) {
+      cachedCustomPassage = null
+      return null
+    }
+    cachedCustomPassage = JSON.parse(raw)
+    return cachedCustomPassage
   } catch {
+    customPassageLoaded = true
+    cachedCustomPassage = null
     return null
   }
 }
 
 export function saveStoredCustomPassage(passage: CustomReadingPassage | null): void {
+  cachedCustomPassage = passage
+  customPassageLoaded = true
   if (typeof window === 'undefined') return
   try {
     if (passage) {
@@ -474,13 +519,16 @@ export function saveStoredCustomPassage(passage: CustomReadingPassage | null): v
 }
 
 // ──────────────────────────────────────────
-// Reactive Hooks
+// Reactive Hooks with Stable Cache Subscriptions
 // ──────────────────────────────────────────
 
-function createSubscription(eventName: string) {
+function createSubscription(eventName: string, onInvalidate: () => void) {
   return (callback: () => void) => {
     if (typeof window === 'undefined') return () => {}
-    const handler = () => callback()
+    const handler = () => {
+      onInvalidate()
+      callback()
+    }
     window.addEventListener(eventName, handler)
     window.addEventListener('storage', handler)
     return () => {
@@ -490,26 +538,32 @@ function createSubscription(eventName: string) {
   }
 }
 
-const subscribeVocab = createSubscription(EVENT_VOCAB_CHANGED)
-const subscribeActivity = createSubscription(EVENT_ACTIVITY_CHANGED)
-const subscribeProfile = createSubscription(EVENT_PROFILE_CHANGED)
-const subscribeJournal = createSubscription(EVENT_JOURNAL_CHANGED)
-const subscribeCustomPassage = createSubscription(EVENT_CUSTOM_PASSAGE_CHANGED)
+const subscribeVocab = createSubscription(EVENT_VOCAB_CHANGED, () => {
+  cachedVocab = null
+})
+const subscribeActivity = createSubscription(EVENT_ACTIVITY_CHANGED, () => {
+  cachedActivity = null
+})
+const subscribeProfile = createSubscription(EVENT_PROFILE_CHANGED, () => {
+  cachedProfile = null
+})
+const subscribeJournal = createSubscription(EVENT_JOURNAL_CHANGED, () => {
+  cachedJournal = null
+})
+const subscribeCustomPassage = createSubscription(EVENT_CUSTOM_PASSAGE_CHANGED, () => {
+  customPassageLoaded = false
+  cachedCustomPassage = null
+})
 
 export function useVocabularyStore(serverWords?: Vocabulary[]) {
-  const [mounted, setMounted] = useState(false)
-  const clientWords = useSyncExternalStore(
+  const words = useSyncExternalStore(
     subscribeVocab,
     getStoredVocabulary,
     () => (serverWords || fallbackVocabulary) as StoredVocabularyItem[],
   )
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
   return {
-    words: mounted ? clientWords : ((serverWords || fallbackVocabulary) as StoredVocabularyItem[]),
+    words,
     addItem: addVocabularyItem,
     updateItem: updateVocabularyItem,
     recordReview: recordWordReview,
@@ -519,70 +573,50 @@ export function useVocabularyStore(serverWords?: Vocabulary[]) {
 }
 
 export function useStudyActivityStore() {
-  const [mounted, setMounted] = useState(false)
   const activity = useSyncExternalStore(
     subscribeActivity,
     getStoredStudyActivity,
     () => DEFAULT_STUDY_ACTIVITY,
   )
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
   return {
-    activity: mounted ? activity : DEFAULT_STUDY_ACTIVITY,
+    activity,
     recordSession: recordStudySession,
   }
 }
 
 export function useLearnerProfileStore() {
-  const [mounted, setMounted] = useState(false)
   const profile = useSyncExternalStore(
     subscribeProfile,
     getStoredLearnerProfile,
     () => DEFAULT_LEARNER_PROFILE,
   )
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
   return {
-    profile: mounted ? profile : DEFAULT_LEARNER_PROFILE,
+    profile,
     updateProfile: updateLearnerProfile,
   }
 }
 
 export function useJournalStore() {
-  const [mounted, setMounted] = useState(false)
   const entries = useSyncExternalStore(
     subscribeJournal,
     getStoredJournal,
     () => DEFAULT_JOURNAL_ENTRIES,
   )
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
   return {
-    entries: mounted ? entries : DEFAULT_JOURNAL_ENTRIES,
+    entries,
     addEntry: addJournalEntry,
     deleteEntry: deleteJournalEntry,
   }
 }
 
 export function useCustomPassageStore() {
-  const [mounted, setMounted] = useState(false)
   const passage = useSyncExternalStore(subscribeCustomPassage, getStoredCustomPassage, () => null)
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
   return {
-    passage: mounted ? passage : null,
+    passage,
     savePassage: saveStoredCustomPassage,
     clearPassage: () => saveStoredCustomPassage(null),
   }

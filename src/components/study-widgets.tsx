@@ -275,10 +275,17 @@ export function ReviewSession() {
     }))
   }
 
-  // Initialize deck
+  // Initialize deck when deckMode or selectedLang is changed
   useEffect(() => {
-    if (activePool.length > 0) {
-      setQueue(buildDeck(activePool))
+    const list =
+      deckMode === 'due'
+        ? words.filter(
+            (w) => (selectedLang === 'all' || w.language === selectedLang) && w.status !== 'known',
+          )
+        : words.filter((w) => selectedLang === 'all' || w.language === selectedLang)
+
+    if (list.length > 0) {
+      setQueue(buildDeck(list))
       setIndex(0)
       setFlipped(false)
       setFinished(false)
@@ -289,7 +296,8 @@ export function ReviewSession() {
     } else {
       setQueue([])
     }
-  }, [deckMode, selectedLang, activePool.length])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deckMode, selectedLang])
 
   const card: ReviewCard | undefined = queue[index]
 
@@ -371,37 +379,52 @@ export function ReviewSession() {
     }
   }
 
-  // Keyboard shortcut listeners
+  // Keyboard shortcut listeners with stable refs
+  const cardRef = useRef<ReviewCard | undefined>(card)
+  const flippedRef = useRef(flipped)
+  const modeRef = useRef(mode)
+  const rateRef = useRef(rate)
+  const checkAnswerRef = useRef(checkAnswer)
+  const playAudioRef = useRef(playCardAudio)
+
+  useEffect(() => {
+    cardRef.current = card
+    flippedRef.current = flipped
+    modeRef.current = mode
+    rateRef.current = rate
+    checkAnswerRef.current = checkAnswer
+    playAudioRef.current = playCardAudio
+  })
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      // If typing in input, don't capture space or numbers
       const target = event.target as HTMLElement
       if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') {
         if (event.key === 'Enter') {
           event.preventDefault()
-          if (!flipped) {
-            checkAnswer()
+          if (!flippedRef.current) {
+            checkAnswerRef.current()
           }
         }
         return
       }
 
-      if (event.code === 'Space' && mode === 'recognition') {
+      if (event.code === 'Space' && modeRef.current === 'recognition') {
         event.preventDefault()
         setFlipped((value) => !value)
       } else if (event.key.toLowerCase() === 'a') {
-        playCardAudio()
+        playAudioRef.current()
       } else if (event.key === 'Escape') {
         setFlipped(false)
-      } else if (flipped && ['1', '2', '3', '4'].includes(event.key)) {
+      } else if (flippedRef.current && ['1', '2', '3', '4'].includes(event.key)) {
         const ratings: ('Again' | 'Hard' | 'Good' | 'Easy')[] = ['Again', 'Hard', 'Good', 'Easy']
         const pick = ratings[Number(event.key) - 1]
-        rate(pick)
+        rateRef.current(pick)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  })
+  }, [])
 
   // When no cards in active deck
   if (activePool.length === 0 || queue.length === 0) {
